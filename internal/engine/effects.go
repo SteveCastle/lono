@@ -51,9 +51,100 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		}
 		delete(en.Equipped, e.Slot)
 		return nil
+	case "add_to":
+		return setAddOp(def, st, ctx, e)
+	case "remove_from":
+		return setRemoveOp(def, st, ctx, e)
+	case "clear":
+		return setClearOp(def, st, ctx, e)
 	default:
 		return fmt.Errorf("unknown effect op %q", e.Op)
 	}
+}
+
+// setAddOp appends a string value to a set attribute if not already present.
+func setAddOp(def *Definition, st *State, ctx *evalCtx, e Effect) error {
+	spec, err := specForTarget(def, st, ctx, e.Target)
+	if err != nil {
+		return err
+	}
+	if spec.Type != "set" {
+		return fmt.Errorf("target %q is not a set", e.Target)
+	}
+	cur, err := resolvePath(st, ctx, e.Target)
+	if err != nil {
+		return err
+	}
+	arr, ok := cur.([]any)
+	if !ok {
+		return fmt.Errorf("target %q is not a set", e.Target)
+	}
+	val, ok := e.Value.(string)
+	if !ok {
+		return fmt.Errorf("add_to value must be a string, got %T", e.Value)
+	}
+	// For ref-elem sets, validate the entity exists.
+	if spec.Elem == "ref" {
+		if _, exists := st.Entities[val]; !exists {
+			return fmt.Errorf("add_to: entity %q does not exist", val)
+		}
+	}
+	// No-op if already present.
+	for _, item := range arr {
+		if item == val {
+			return nil
+		}
+	}
+	next := append(arr, val)
+	if err := ValidateValue(spec, next); err != nil {
+		return fmt.Errorf("add_to %s: %w", e.Target, err)
+	}
+	writeTarget(st, ctx, e.Target, next)
+	return nil
+}
+
+// setRemoveOp removes a string value from a set attribute if present.
+func setRemoveOp(def *Definition, st *State, ctx *evalCtx, e Effect) error {
+	spec, err := specForTarget(def, st, ctx, e.Target)
+	if err != nil {
+		return err
+	}
+	if spec.Type != "set" {
+		return fmt.Errorf("target %q is not a set", e.Target)
+	}
+	cur, err := resolvePath(st, ctx, e.Target)
+	if err != nil {
+		return err
+	}
+	arr, ok := cur.([]any)
+	if !ok {
+		return fmt.Errorf("target %q is not a set", e.Target)
+	}
+	val, ok := e.Value.(string)
+	if !ok {
+		return fmt.Errorf("remove_from value must be a string, got %T", e.Value)
+	}
+	next := make([]any, 0, len(arr))
+	for _, item := range arr {
+		if item != val {
+			next = append(next, item)
+		}
+	}
+	writeTarget(st, ctx, e.Target, next)
+	return nil
+}
+
+// setClearOp empties a set attribute.
+func setClearOp(def *Definition, st *State, ctx *evalCtx, e Effect) error {
+	spec, err := specForTarget(def, st, ctx, e.Target)
+	if err != nil {
+		return err
+	}
+	if spec.Type != "set" {
+		return fmt.Errorf("target %q is not a set", e.Target)
+	}
+	writeTarget(st, ctx, e.Target, []any{})
+	return nil
 }
 
 func equipOp(def *Definition, st *State, e Effect) error {

@@ -338,6 +338,115 @@ func TestMarkBeatRepeatableNotRecorded(t *testing.T) {
 	}
 }
 
+// defWithSetAttr creates a definition with an entity-type that has a set
+// attribute ("clues": set of strings) and a ref-set attribute ("party": set of
+// refs to "character"). An entity "aria" and "player" are pre-populated.
+func defWithSetAttr() (*Definition, *State) {
+	def := &Definition{
+		ID: "g", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"clues": {Type: "set", Elem: "string"},
+				"party": {Type: "set", Elem: "ref", RefType: "character"},
+			}},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.Entities["player"] = &Entity{Type: "character", Attrs: map[string]any{
+		"clues": []any{},
+		"party": []any{},
+	}, Inventory: map[string]int{}}
+	st.Entities["aria"] = &Entity{Type: "character", Attrs: map[string]any{
+		"clues": []any{},
+		"party": []any{},
+	}, Inventory: map[string]int{}}
+	return def, st
+}
+
+func TestSetEffects(t *testing.T) {
+	def, st := defWithSetAttr()
+	ctx := newEvalCtx(nil, &RNG{state: 1})
+
+	// add_to: adds an element.
+	if err := applyEffect(def, st, ctx, Effect{Op: "add_to", Target: "entity.player.clues", Value: "alibi"}); err != nil {
+		t.Fatal(err)
+	}
+	clues := st.Entities["player"].Attrs["clues"].([]any)
+	if len(clues) != 1 || clues[0] != "alibi" {
+		t.Fatalf("add_to failed: %v", clues)
+	}
+
+	// add_to: duplicate is a no-op.
+	if err := applyEffect(def, st, ctx, Effect{Op: "add_to", Target: "entity.player.clues", Value: "alibi"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Entities["player"].Attrs["clues"].([]any)) != 1 {
+		t.Fatal("add_to duplicate should be a no-op")
+	}
+
+	// add_to: add a second element.
+	if err := applyEffect(def, st, ctx, Effect{Op: "add_to", Target: "entity.player.clues", Value: "motive"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Entities["player"].Attrs["clues"].([]any)) != 2 {
+		t.Fatal("add_to second element failed")
+	}
+
+	// remove_from: removes the element.
+	if err := applyEffect(def, st, ctx, Effect{Op: "remove_from", Target: "entity.player.clues", Value: "alibi"}); err != nil {
+		t.Fatal(err)
+	}
+	clues2 := st.Entities["player"].Attrs["clues"].([]any)
+	if len(clues2) != 1 || clues2[0] != "motive" {
+		t.Fatalf("remove_from failed: %v", clues2)
+	}
+
+	// remove_from: absent element is a no-op (no error).
+	if err := applyEffect(def, st, ctx, Effect{Op: "remove_from", Target: "entity.player.clues", Value: "ghost"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// clear: empties the set.
+	if err := applyEffect(def, st, ctx, Effect{Op: "clear", Target: "entity.player.clues"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Entities["player"].Attrs["clues"].([]any)) != 0 {
+		t.Fatal("clear failed")
+	}
+}
+
+func TestSetRefElemValidation(t *testing.T) {
+	def, st := defWithSetAttr()
+	ctx := newEvalCtx(nil, &RNG{state: 1})
+
+	// add_to ref-set with existing entity: ok.
+	if err := applyEffect(def, st, ctx, Effect{Op: "add_to", Target: "entity.player.party", Value: "aria"}); err != nil {
+		t.Fatalf("ref add_to existing entity failed: %v", err)
+	}
+
+	// add_to ref-set with non-existent entity: error.
+	if err := applyEffect(def, st, ctx, Effect{Op: "add_to", Target: "entity.player.party", Value: "ghost"}); err == nil {
+		t.Fatal("expected error for non-existent ref entity")
+	}
+}
+
+func TestSetNonSetTargetRejected(t *testing.T) {
+	def := defForEffects()
+	st := stateForEffects()
+	ctx := newEvalCtx(nil, &RNG{state: 1})
+
+	// "alarm" is a bool, not a set.
+	if err := applyEffect(def, st, ctx, Effect{Op: "add_to", Target: "world.alarm", Value: "x"}); err == nil {
+		t.Fatal("expected error for non-set target")
+	}
+	if err := applyEffect(def, st, ctx, Effect{Op: "remove_from", Target: "world.alarm", Value: "x"}); err == nil {
+		t.Fatal("expected error for non-set target")
+	}
+	if err := applyEffect(def, st, ctx, Effect{Op: "clear", Target: "world.alarm"}); err == nil {
+		t.Fatal("expected error for non-set target")
+	}
+}
+
 func equipDef() *Definition {
 	def := defForEffects() // entityType character
 	et := def.EntityTypes["character"]
