@@ -26,6 +26,7 @@ lono define branch            set|rm <game> <machine> --spec '<Transition>'  # a
 lono define derived           set|rm <game> <name> --spec '<DerivedSpec>'
 lono define event             set|rm <game> <name> --spec '<Beat>'           # alias: beat
 lono define trigger           set|rm <game> <name> --spec '<Trigger>'       # reactive rule (fires automatically)
+lono define lore              set|rm <game> <id>   --spec '<LoreEntry>'     # authored worldbuilding (see Lore / codex)
 lono define <kind>            rm  <game> <name>     # branch/transition: rm <game> <machine> <transitionId>
 ```
 
@@ -41,7 +42,7 @@ definition after each change and are the preferred way to add characters and
 links (over hand-writing `setup` ops).
 
 ```
-lono game add character    <game> <id> --type <type> [--attrs '<json>']
+lono game add character    <game> <id> --type <type> [--attrs '<json>'] [--description "<prose>"]
 lono game add relationship <game> <type> <from> <to> [--attrs '<json>']
 lono game give             <game> <character> --item <item> [--count N] [--equip <slot>]
 lono game rm  character    <game> <id>
@@ -291,6 +292,8 @@ Machines: `{"op":"set_machine_state","machine":"arc","state":"caught"}` (global)
 Dice: `{"op":"roll","dice":"1d6","store":"dmg"}` then reference `{"$roll":"dmg"}` in a later op (deterministic per instance seed; supports `NdM`, `NdM+K`, `NdM-K`).
 Narrative: `{"op":"mark_beat","beat":"aria_first_smile"}` (records a one-shot beat as delivered).
 Equipment: `{"op":"equip","entity":"player","slot":"torso","item":"silk_dress"}` · `{"op":"unequip","entity":"player","slot":"torso"}` (slot must exist & accept the item's category; one item per slot).
+Movement: `{"op":"move","entity":"player","to":"hall","attr":"location","via":"exit"}` — sets a `ref` attribute (`attr` defaults to `"location"`) to the destination entity `to` (must exist). Optional `via` requires a relationship of that type from the entity's current location to `to` (errors `no exit from "study" to "garden"` if none) — first-class guarded, connected travel. Compose with `advance` (travel time) + triggers (arrival). See **Worlds & maps**.
+Lore: `{"op":"discover","lore":"<id>"}` — marks a `Lore` entry known (errors on unknown id; idempotent). The instance tracks `discoveredLore`. See **Lore / codex**.
 
 ## Derived values (reusable social-graph queries)
 
@@ -308,12 +311,118 @@ Computed on read; usable anywhere a path is.
 }
 ```
 - `over`: `relationships` | `entities`. `where`: `type`, `from`/`to` (relationship
-  endpoints — a literal id or `$self`), and `attrs` predicates.
-- `reduce`: `count` `any` `sum:<attr>` `min:<attr>` `max:<attr>` `argmax:<attr>`
-  `argmin:<attr>`. `argmax`/`argmin` over relationships return the matching edge's
-  `from` id (anchor on `to` to get "who…"); over entities, the entity id.
+  endpoints) and `attrs`-predicate `value`s each accept a **literal id**, `$self`,
+  or **`{"$path":"<path>"}`** (resolved against live state — so a query can be
+  parameterized by, e.g., the actor's current room).
+- `reduce`: `count` `any` `list` `sum:<attr>` `min:<attr>` `max:<attr>`
+  `argmax:<attr>` `argmin:<attr>`. **`list`** returns the array of matching ids.
+  For relationship `list`/`argmax`/`argmin` the result is the endpoint **opposite**
+  the anchored one: anchor `to` → returns `from`s ("who…"); anchor `from` → returns
+  `to`s ("exits from here"); default `from` if neither is anchored. Over entities,
+  the entity id(s).
 - A derived whose `where` uses `$self` is **per-entity** — read it as
   `entity.<id>.derived.<name>`. Others are global: `derived.<name>`.
+
+## Worlds & maps
+
+A setting/geography is built from existing primitives — no new entity kind:
+
+- A **place** is a `location` **entity** (give it a `name` attr and, ideally, an
+  authored per-instance `--description`).
+- **Connections** are an **`exit` relationship type** between locations (directed;
+  carry attrs like `direction`). One `exit` per direction you want traversable.
+- A mover's **position** is a `ref` attribute, e.g. `character.location` with
+  `{"type":"ref","refType":"location"}`. Pointing it at a location places the mover
+  there.
+
+```json
+"entityTypes": {
+  "location":  {"attributes":{"name":{"type":"string"}}},
+  "character": {"attributes":{"name":{"type":"string"},
+                              "location":{"type":"ref","refType":"location"}}}
+}
+"relationshipTypes": {
+  "exit": {"from":"location","to":"location","directed":true,
+           "attributes":{"direction":{"type":"string"}}}
+}
+```
+
+**Travel** uses the `move` effect op (move a mover's ref to a destination):
+
+```json
+{"op":"move","entity":"player","to":"hall","attr":"location","via":"exit"}
+```
+
+`attr` defaults to `"location"` and must be a `ref`; `to` must exist. Optional
+`via` requires an `exit` relationship from the current location to `to`, so travel
+is confined to connected, traversable links (errors `no exit from "study" to
+"garden"` if none). Compose travel **time** with `advance` (tick the clock) and
+**arrival** consequences with triggers (a `when` on the new `location`).
+
+**Per-instance descriptions.** Any specific entity — a room, object, or person in
+the cast — can carry its own authored prose:
+
+```
+lono game add character <game> study --type location --description "An oak-panelled study, fire low in the grate."
+```
+
+The runtime entity gets a `description` (surfaced in `state`/`inspect`). This is
+*instance-specific* prose, distinct from a type's generic `description`.
+
+**Dynamic spatial queries** are ordinary `derived` values using `{"$path":…}`
+operands + the `list` reducer (resolved against live state, so they answer "from
+where the player *currently* is"):
+
+```json
+"exits_here":   {"over":"relationships",
+  "where":{"type":"exit","from":{"$path":"entity.player.location"}},
+  "reduce":"list","intent":"destinations reachable from the player's location"},
+"whos_here":    {"over":"entities",
+  "where":{"attrs":[{"attr":"location","op":"eq","value":{"$path":"entity.player.location"}}]},
+  "reduce":"list","intent":"everyone at the player's location"}
+```
+
+Remember the counterpart rule for relationship `list`: anchoring `from` returns the
+`to`s (the destinations), which is what "exits from here" needs.
+
+## Lore / codex
+
+**Lore** is authored worldbuilding reference — the history of places, the
+provenance of objects, the background of people: the *world bible*. It is distinct
+from `beats` (triggered narration) and the journal (per-playthrough runtime
+memory). `Definition.Lore` is a map of `id → LoreEntry`:
+
+```json
+{
+  "title":   "The Locket's Provenance",
+  "text":    "Forged in Year 312 for the first Lady of the manor, lost in the fire.",
+  "tags":    ["locket","manor","history"],
+  "subject": "locket",            // optional id this entry is about (entity/itemType/place/concept)
+  "when":    "Year 312",          // optional timeline marker ("before the war")
+  "intent":  "the locket's tragic origin, hinted before it's found"
+}
+```
+
+`title` and `text` are required; the rest optional (`subject` may be a
+forward/conceptual ref — not hard-checked). Author entries with:
+
+```
+lono define lore set <game> <id> --spec '<LoreEntry>'
+lono define lore rm  <game> <id>
+```
+
+Lore is **static but revealable**: an entry stays in the codex until the player
+learns it. Mark one known with the `discover` effect op (usable in
+transitions/triggers/apply):
+
+```json
+{"op":"discover","lore":"locket_provenance"}
+```
+
+The instance tracks `discoveredLore` (a set of revealed ids, surfaced in `state`
+and via `inspect <run> discoveredLore`). At play time the narrator reads the codex
+for grounding (`lono lore list|show`) and emits `discover` as the player uncovers
+things — see the runtime reference.
 
 ## Beats (authored narrative the engine surfaces)
 

@@ -141,6 +141,19 @@ in a good order:
 5. **Items & equipment.** Inventory items, and worn clothing/accessories/gear
    with slots. → `define item` (alias of `item-type`) + `slots` on the
    character entity-type. Use `game give` to hand items to the starting cast.
+
+   **Worlds & lore (if the story has places to move through or a world to
+   ground it).** Model the map from existing primitives: each **place** is a
+   `location` entity, **connections** are an **`exit` relationship type** between
+   locations (directed, with a `direction` attr), and a mover's position is a
+   `location` **ref** attribute. Give rooms/objects/people their own authored
+   `--description` on `game add` so a specific place reads distinctly. Encode
+   world history/backstory/provenance as **`lore`** entries (`define lore set`,
+   with `subject`/`tags`/`when`) — the queryable world bible, separate from beats
+   and the journal. At play time, "exits from here"/"who's here" are `derived`
+   queries using `{"$path":…}` + the `list` reducer, and travel is the `move` op
+   (often guarded `via:"exit"`) paired with `advance` for travel time. See the
+   reference's **Worlds & maps** and **Lore / codex**.
 6. **The narrative arc.** The spine of the story as a state machine: scenes/
    phases as states, and the actions that move between them as transitions with
    guards (when they're allowed) and effects (what they change). Add

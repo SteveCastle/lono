@@ -74,7 +74,12 @@ Repeat each turn:
    snapshot if they want a different outcome.)
 3. **Narrate the scene.** Write prose grounded in the actual state — the current
    scene (use the state's `stateMeta.description` if present), who's present,
-   how relationships stand, what's changed. **Weave in any active `beats`**
+   how relationships stand, what's changed. If the game has a **map**, ground the
+   place too: read the current location's authored `description` and the spatial
+   `derived` ("exits from here" / "who's here", the `list`-reducer queries) to
+   describe the room and offer travel. Consult `lore show`/`lore list <game>` for
+   grounded worldbuilding (the history of a place, the provenance of an object)
+   when it adds color. **Weave in any active `beats`**
    verbatim-in-spirit; after you deliver a one-shot beat, mark it so it doesn't
    repeat: `lono --data-dir ./.lono apply <run> --ops '[{"op":"mark_beat","beat":"<id>"}]'`
    (or rely on a transition whose effects include `mark_beat`).
@@ -103,6 +108,14 @@ Repeat each turn:
      advance the clock: `lono --data-dir ./.lono advance <run> [n]`. This fires due
      scheduled effects and periodic/reactive triggers — check the returned `fired`
      and narrate whatever the engine set in motion.
+   - To **relocate the player/an NPC** across the map, use the `move` op (often
+     guarded `via:"exit"` so travel follows real connections):
+     `lono --data-dir ./.lono apply <run> --ops '[{"op":"move","entity":"player","to":"hall","attr":"location","via":"exit"}]'`,
+     then `advance` for travel time and narrate the arrival. A rejected `move`
+     (`no exit from …`) means there's no way through — relay it.
+   - When the player **learns a piece of lore**, mark it known so it persists:
+     `lono --data-dir ./.lono apply <run> --ops '[{"op":"discover","lore":"<id>"}]'`
+     (tracked in `discoveredLore`; read with `inspect <run> discoveredLore`).
    - At **meaningful narrative moments**, append a journal memory so it persists
      across sessions: `lono --data-dir ./.lono apply <run> --ops '[{"op":"record","text":"…","tags":[…]}]'`.
 6. **Loop** back to step 1 with the new state the command returned. After any

@@ -22,6 +22,7 @@ operate.
 - [The game model](#the-game-model)
 - [The rule language: guards, effects, paths](#the-rule-language-guards-effects-paths)
 - [Reactive systems: triggers, time & the journal](#reactive-systems-triggers-time--the-journal)
+- [Worlds, maps & lore](#worlds-maps--lore)
 - [Playing a game: the turn loop](#playing-a-game-the-turn-loop)
 - [Command reference](#command-reference)
 - [Output, data dir, and errors](#output-data-dir-and-errors)
@@ -219,10 +220,11 @@ flowchart TD
 | **machine** | a storyline as a state machine. *Global* machines track the overall arc; **attached** machines instantiate **per couple or per character** (e.g. a romance-stage arc for each pair) and read their host via `this.*` |
 | **scene / ending** | a state of a machine; mark it `terminal`+`ending` and the engine reports when it's reached |
 | **branch** | a transition/action between states, gated by a **guard** and applying **effects** |
-| **derived value** | a reusable aggregate over the social graph — `count`/`any`/`sum`/`min`/`max`/`argmax` — e.g. "how many characters adore the player?" |
+| **derived value** | a reusable aggregate over the social graph — `count`/`any`/`list`/`sum`/`min`/`max`/`argmax` — e.g. "how many characters adore the player?" or "which rooms exit from here?". `where` endpoints/values accept `{"$path":…}`, so a query can be parameterized by live state |
 | **beat** | authored prose the engine surfaces as *active* when its state/guard conditions hold |
 | **trigger** | a reactive rule — `{when: <guard>, effects}` (or `every: N` ticks) — the engine fires **automatically** whenever its condition arises: consequences, deadlines, upkeep, per-turn changes |
-| **cast** | the concrete starting **entities** (characters/items in the world) and their starting **relationships** |
+| **lore** | authored, queryable worldbuilding — `{title, text, tags, subject, when}` entries on the history of places, provenance of objects, background of people; static but revealable via the `discover` op (tracked in `discoveredLore`) |
+| **cast** | the concrete starting **entities** (characters/items in the world — including `location` places linked by `exit` relationships) and their starting **relationships** |
 
 A sample storyline machine:
 
@@ -274,6 +276,7 @@ set_relationship · adjust_relationship · remove_relationship
 set_machine_state · set_attached_state        roll (seeded dice)   mark_beat
 add_to · remove_from · clear (set ops)        compute · if/then/else
 schedule · cooldown (time)                    record (journal)
+move (travel a ref, opt. via an exit)         discover (reveal lore)
 ```
 
 The engine validates every effect (types, bounds, references) before committing,
@@ -348,6 +351,62 @@ current numbers.
 
 ---
 
+## Worlds, maps & lore
+
+A setting is built from the same primitives, no new entity kind: a **place** is a
+`location` entity, a **connection** is an **`exit` relationship** between two
+locations, and a mover's **position** is a `location` **ref** attribute. The map is
+just a directed graph in the social graph you already have.
+
+```mermaid
+flowchart LR
+    study["study<br/>(location)"]
+    hall["hall<br/>(location)"]
+    garden["garden<br/>(location)"]
+    study -->|exit · east| hall
+    hall -->|exit · west| study
+    hall -->|exit · south| garden
+    garden -->|exit · north| hall
+    player(("player<br/>location → study")) -.at.- study
+```
+
+- **Travel** is the **`move`** effect op:
+  `{"op":"move","entity":"player","to":"hall","attr":"location","via":"exit"}`.
+  `attr` defaults to `location` (a `ref`); `to` must exist; optional **`via`**
+  requires an `exit` from the current location to the destination, so travel
+  follows real connections (errors `no exit from "study" to "garden"` otherwise).
+  Pair it with `advance` for travel **time** and triggers for **arrival** events.
+- **Dynamic spatial queries** are ordinary `derived` values: `where.from`/`where.to`
+  and attr-predicate `value`s now accept **`{"$path":"<path>"}`** (resolved against
+  live state), and a **`list`** reducer returns the array of matching ids. So
+  "exits from here" and "who's here" are parameterized by the actor's *current*
+  room:
+
+  ```json
+  "exits_here": {"over":"relationships",
+    "where":{"type":"exit","from":{"$path":"entity.player.location"}},"reduce":"list"}
+  "whos_here":  {"over":"entities",
+    "where":{"attrs":[{"attr":"location","op":"eq","value":{"$path":"entity.player.location"}}]},"reduce":"list"}
+  ```
+
+  (For relationship `list`/`argmax`/`argmin`, the result is the endpoint *opposite*
+  the anchored one — anchoring `from` returns the reachable `to`s.)
+- **Per-instance descriptions.** Any specific room, object, or person can carry its
+  own authored prose via `game add … --description "An oak-panelled study."` —
+  surfaced in `state`/`inspect`, distinct from a type's generic description.
+- **Lore / codex.** Authored, queryable worldbuilding — the history of places, the
+  provenance of objects, the background of people — held in `Definition.Lore`
+  (entries of `{title, text, tags, subject, when, intent}`). It's the *world bible*,
+  distinct from beats (triggered narration) and the journal (runtime memory).
+  Author it with `lono define lore set <game> <id> --spec '<LoreEntry>'`, read it
+  with `lono lore list <game> [--tag t] [--subject id]` / `lono lore show <game>
+  <id>`. Lore is **static but revealable**: the `discover` op
+  (`{"op":"discover","lore":"<id>"}`) marks an entry known and the instance tracks
+  `discoveredLore` — so the narrator can ground prose in authored history and reveal
+  it as the player learns it.
+
+---
+
 ## Playing a game: the turn loop
 
 ```mermaid
@@ -390,7 +449,7 @@ lono game get <id> [path] [--tree] [--depth N]   # navigate/inspect the definiti
 
 ### Construction — cast
 ```
-lono game add character <id> <char> --type <type> [--attrs '<json>']
+lono game add character <id> <char> --type <type> [--attrs '<json>'] [--description "<prose>"]
 lono game add relationship <id> <type> <from> <to> [--attrs '<json>']
 lono game give <id> <char> --item <item> [--count N] [--equip <slot>]
 lono game rm character <id> <char> | rm relationship <id> <type> <from> <to>
@@ -405,6 +464,7 @@ lono define branch   set|rm <id> <machine> --spec '<transition json>'   # transi
 lono define scene    set|rm <id> <machine> <state> --spec '<stateMeta json>'
 lono define event    set|rm <id> <name>    --spec '<beat json>'
 lono define trigger  set|rm <id> <name>    --spec '<trigger json>'      # reactive rule
+lono define lore     set|rm <id> <loreId>  --spec '<lore entry json>'   # authored worldbuilding
 ```
 (`item`=item-type, `relationship-type`=rel-type, `branch`=transition, `event`=beat — friendly aliases.)
 
@@ -414,7 +474,8 @@ lono play start <game> --id <run> [--seed N]
 lono play list
 lono state <run>                          # full state + actions + beats + endings + clock + journal
 lono actions <run>
-lono inspect <run> [path] [--tree]        # targeted read of live state (e.g. inspect <run> log)
+lono inspect <run> [path] [--tree]        # targeted read of live state (e.g. inspect <run> log, discoveredLore)
+lono lore list <game> [--tag t] [--subject id] | show <game> <id>   # read the authored codex
 lono advance <run> [n]                    # tick the clock: fires scheduled/periodic/reactive triggers
 lono do <run> <machine> <action> [--params '<json>'] [--rel <from>,<to> | --entity <id>]
 lono apply <run> --ops '<json array of effects>'   # incl. record (journal), add_to, compute, schedule …

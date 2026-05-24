@@ -16,6 +16,8 @@ lono do <run> <machine> <action> [--params '<json>'] [--entity <id> | --rel <fro
 lono advance <run> [n]                         # advance in-game time n ticks (default 1): fires scheduled/periodic/reactive
 lono apply <run> --ops '<json-array>'          # ad-hoc state updates (documented ops only)
 lono inspect <run> [path] [--tree] [--depth N] # targeted read of live state (see §Inspect below)
+lono lore list <game> [--tag <t>] [--subject <id>]  # the authored codex (id, title, tags, subject); no instance needed
+lono lore show <game> <id>                     # the full lore entry
 lono set <run> <path> --value <v> | --spec '<json>' [--force]  # targeted write (validated by default)
 lono rm  <run> <path> [--force]                # remove a node (validated by default)
 lono snapshot create <run> [--id <id>] [--label "<l>"]
@@ -60,6 +62,7 @@ No path → whole state. `--tree` → names-only structural map. Path forms:
 | `clock` | the current instance clock (tick count) |
 | `cooldowns` | active cooldowns and their due ticks |
 | `scheduled` | pending scheduled effects and when they fire |
+| `discoveredLore` | ids of lore entries the player has revealed so far |
 
 **Write or remove a node** (compiles to validated effect ops by default):
 ```
@@ -197,3 +200,39 @@ lono -d ./.lono apply run1 --ops '[{"op":"record","text":"Aria forgave you on th
 Use only documented ops in `apply` (see the authoring reference for the full op
 list). The engine validates types/bounds/refs and rejects anything illegal, so a
 rejected `apply` means the move wasn't allowed — relay why and continue.
+
+## Worlds, travel & lore
+
+If the game has a map (location entities + `exit` relationships + a `location` ref
+on movers — see the authoring reference's **Worlds & maps**), drive it at runtime:
+
+```bash
+# Read the scene: where the player is, the exits, who's present.
+lono -d ./.lono inspect run1 entities/player/attrs/location          # current room id
+lono -d ./.lono inspect run1 derived                                 # if authored: exits_here / whos_here (list)
+lono -d ./.lono inspect run1 entities/study                          # the room's authored description + attrs
+
+# Travel: move the player along a connected exit (guarded by via), then pass travel time.
+lono -d ./.lono apply run1 --ops '[{"op":"move","entity":"player","to":"hall","attr":"location","via":"exit"}]'
+lono -d ./.lono advance run1 1                                       # travel time; fires any arrival triggers
+```
+
+A `move` with `via:"exit"` is rejected (`no exit from "study" to "garden"`) when no
+exit connects the rooms — relay that as "there's no way through from here." Movement
+is usually best authored into a transition's effects (`do`), with `apply` for an
+unscripted nudge.
+
+**Lore / codex.** Read the authored world bible for grounding (no instance needed),
+and reveal entries as the player learns them:
+
+```bash
+lono -d ./.lono lore list mygame --subject locket        # entries about the locket
+lono -d ./.lono lore show mygame locket_provenance        # the full entry text
+lono -d ./.lono apply run1 --ops '[{"op":"discover","lore":"locket_provenance"}]'   # mark it known
+lono -d ./.lono inspect run1 discoveredLore               # what the player has uncovered
+```
+
+`discover` is idempotent and errors on an unknown id. Pull facts from `lore
+show`/`list` to ground your narration in the authored history; emit `discover` at
+the moment the player actually learns something so `discoveredLore` reflects the
+playthrough.
