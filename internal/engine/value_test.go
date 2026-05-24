@@ -43,3 +43,37 @@ func TestDefaultValue(t *testing.T) {
 		t.Errorf("explicit default = %v", got)
 	}
 }
+
+func TestSetValidateValue(t *testing.T) {
+	spec := VarSpec{Type: "set", Elem: "string"}
+	cases := []struct {
+		name    string
+		val     any
+		wantErr bool
+	}{
+		{"empty set ok", []any{}, false},
+		{"set with strings ok", []any{"a", "b", "c"}, false},
+		{"set not array", "oops", true},
+		{"set element not string", []any{"a", float64(1)}, true},
+		{"set duplicate element", []any{"a", "b", "a"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := ValidateValue(spec, c.val)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("ValidateValue(%v)=%v, wantErr=%v", c.val, err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestSetDefaultValue(t *testing.T) {
+	got := DefaultValue(VarSpec{Type: "set", Elem: "string"})
+	arr, ok := got.([]any)
+	if !ok {
+		t.Fatalf("set default should be []any, got %T", got)
+	}
+	if len(arr) != 0 {
+		t.Fatalf("set default should be empty, got %v", arr)
+	}
+}

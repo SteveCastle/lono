@@ -5,12 +5,13 @@ import "fmt"
 // VarSpec describes a typed slot: a world variable, entity attribute,
 // relationship attribute, or action parameter.
 type VarSpec struct {
-	Type    string   `json:"type"` // int|float|bool|string|enum|ref
+	Type    string   `json:"type"` // int|float|bool|string|enum|ref|set
 	Default any      `json:"default,omitempty"`
 	Min     *float64 `json:"min,omitempty"`
 	Max     *float64 `json:"max,omitempty"`
 	Values  []string `json:"values,omitempty"`  // enum members
-	RefType string   `json:"refType,omitempty"` // ref target entity type
+	RefType string   `json:"refType,omitempty"` // ref target entity type; also used for set elem:"ref"
+	Elem    string   `json:"elem,omitempty"`    // set element type: "string" or "ref"
 }
 
 // toFloat coerces JSON-decoded numbers to float64.
@@ -63,6 +64,22 @@ func ValidateValue(spec VarSpec, v any) error {
 			}
 		}
 		return fmt.Errorf("value %q not in enum %v", s, spec.Values)
+	case "set":
+		arr, ok := v.([]any)
+		if !ok {
+			return fmt.Errorf("expected array for set, got %T", v)
+		}
+		seen := map[string]bool{}
+		for i, elem := range arr {
+			s, ok := elem.(string)
+			if !ok {
+				return fmt.Errorf("set element %d: expected string, got %T", i, elem)
+			}
+			if seen[s] {
+				return fmt.Errorf("set element %q is duplicated", s)
+			}
+			seen[s] = true
+		}
 	default:
 		return fmt.Errorf("unknown type %q", spec.Type)
 	}
@@ -86,6 +103,8 @@ func DefaultValue(spec VarSpec) any {
 			return spec.Values[0]
 		}
 		return ""
+	case "set":
+		return []any{}
 	}
 	return nil
 }
