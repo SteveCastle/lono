@@ -1,0 +1,280 @@
+{
+  "id": "last-watch",
+  "name": "The Last Watch",
+  "version": 1,
+  "description": "A survival siege game. Hold the frontier outpost through three nights until reinforcements arrive — or watch it fall.",
+  "intent": "tense, desperate, resource-management survival with reactive time pressure",
+
+  "world": {
+    "supplies":  {"type": "int",  "default": 10, "min": 0, "max": 20},
+    "morale":    {"type": "int",  "default": 10, "min": 0, "max": 10},
+    "breached":  {"type": "bool", "default": false},
+    "relieved":  {"type": "bool", "default": false}
+  },
+
+  "entityTypes": {
+    "garrison": {
+      "description": "A group of soldiers holding the outpost.",
+      "attributes": {
+        "name":      {"type": "string"},
+        "strength":  {"type": "int", "default": 6, "min": 0, "max": 10},
+        "fortitude": {"type": "int", "default": 5, "min": 0, "max": 10}
+      }
+    },
+    "commander": {
+      "description": "The player character — the outpost commander.",
+      "attributes": {
+        "name":    {"type": "string"},
+        "resolve": {"type": "int", "default": 7, "min": 0, "max": 10}
+      }
+    }
+  },
+
+  "derived": {
+    "survivors_count": {
+      "over":   "entities",
+      "where":  {"type": "garrison"},
+      "reduce": "count",
+      "intent": "number of garrison entities still present"
+    }
+  },
+
+  "machines": {
+    "arc": {
+      "initial": "holding",
+      "states":  ["holding", "relieved", "fallen"],
+      "stateMeta": {
+        "holding": {
+          "description": "Night presses in. The siege drums never stop.",
+          "intent":      "active play state — survive each night"
+        },
+        "relieved": {
+          "terminal":    true,
+          "ending":      true,
+          "description": "Horns sound from the eastern ridge. The relief column crests the hill in dawn light — you held.",
+          "intent":      "victory ending: survived until reinforcements arrived"
+        },
+        "fallen": {
+          "terminal":    true,
+          "ending":      true,
+          "description": "The gate splinters. The outpost is lost — overrun before dawn.",
+          "intent":      "defeat ending: walls breached with no morale left to fight back"
+        }
+      },
+      "transitions": [
+        {
+          "id":          "defend",
+          "from":        "holding",
+          "to":          "holding",
+          "description": "Mount a defense of the walls — roll to repel the assault.",
+          "effects": [
+            {"op": "roll", "dice": "1d10", "store": "atk"},
+            {"op": "if",
+             "when": {"target": "roll.atk", "op": "gte", "value": 5},
+             "then": [
+               {"op": "record", "text": "The assault is beaten back. Soldiers cheer.", "tags": ["defend", "success"]},
+               {"op": "if",
+                "when": {"target": "world.morale", "op": "lt", "value": 10},
+                "then": [{"op": "inc", "target": "world.morale", "value": 1}],
+                "else": []}
+             ],
+             "else": [
+               {"op": "record", "text": "The enemy pushes through a gap in the wall. Morale wavers.", "tags": ["defend", "failure"]},
+               {"op": "if",
+                "when": {"target": "world.morale", "op": "gt", "value": 0},
+                "then": [
+                  {"op": "compute",
+                   "target": "world.morale",
+                   "fn": "sub",
+                   "a": {"$path": "world.morale"},
+                   "b": {"$path": "entity.garrison.fortitude"}}
+                ],
+                "else": []},
+               {"op": "if",
+                "when": {"target": "world.morale", "op": "lte", "value": 0},
+                "then": [{"op": "set", "target": "world.breached", "value": true}],
+                "else": []}
+             ]}
+          ]
+        },
+        {
+          "id":          "rally",
+          "from":        "holding",
+          "to":          "holding",
+          "description": "Rally the troops — spend supply rations to restore morale.",
+          "guard": {
+            "and": [
+              {"target": "cooldown.rally", "op": "eq", "value": 0},
+              {"target": "world.supplies", "op": "gt", "value": 1},
+              {"target": "world.morale",   "op": "lt", "value": 8}
+            ]
+          },
+          "effects": [
+            {"op": "cooldown", "key": "rally", "ticks": 2},
+            {"op": "dec",      "target": "world.supplies", "value": 2},
+            {"op": "inc",      "target": "world.morale",   "value": 3},
+            {"op": "record",   "text": "You walk the walls, speaking to each soldier by name. The men stand taller.", "tags": ["rally"]}
+          ]
+        },
+        {
+          "id":          "sortie",
+          "from":        "holding",
+          "to":          "holding",
+          "description": "Lead a sortie to disrupt the enemy camp — high risk, high reward.",
+          "guard": {
+            "and": [
+              {"target": "cooldown.sortie", "op": "eq",  "value": 0},
+              {"target": "world.supplies",  "op": "gt",  "value": 1}
+            ]
+          },
+          "effects": [
+            {"op": "cooldown", "key": "sortie", "ticks": 3},
+            {"op": "roll",     "dice": "1d10",  "store": "sortie_roll"},
+            {"op": "if",
+             "when": {"target": "roll.sortie_roll", "op": "gte", "value": 6},
+             "then": [
+               {"op": "if",
+                "when": {"target": "world.supplies", "op": "lte", "value": 17},
+                "then": [{"op": "inc", "target": "world.supplies", "value": 3}],
+                "else": []},
+               {"op": "if",
+                "when": {"target": "world.morale", "op": "lt", "value": 9},
+                "then": [{"op": "inc", "target": "world.morale", "value": 2}],
+                "else": [{"op": "inc", "target": "world.morale", "value": 1}]},
+               {"op": "record", "text": "The sortie returns laden with captured supplies. The enemy falls back.", "tags": ["sortie", "success"]}
+             ],
+             "else": [
+               {"op": "if",
+                "when": {"target": "world.morale", "op": "gt", "value": 2},
+                "then": [{"op": "dec", "target": "world.morale", "value": 2}],
+                "else": [{"op": "set", "target": "world.morale", "value": 0}]},
+               {"op": "record", "text": "The sortie is repulsed. You limp back to the gate with wounded men.", "tags": ["sortie", "failure"]},
+               {"op": "if",
+                "when": {"target": "world.morale", "op": "lte", "value": 0},
+                "then": [{"op": "set", "target": "world.breached", "value": true}],
+                "else": []}
+             ]}
+          ]
+        },
+        {
+          "id":          "forage",
+          "from":        "holding",
+          "to":          "holding",
+          "description": "Send a detail to scavenge supplies from the surrounding farmsteads.",
+          "guard": {
+            "target": "world.supplies", "op": "lt", "value": 8
+          },
+          "effects": [
+            {"op": "inc",    "target": "world.supplies", "value": 2},
+            {"op": "record", "text": "A foraging party slips out before dawn and returns with sacks of grain.", "tags": ["forage"]}
+          ]
+        },
+        {
+          "id":          "relieve",
+          "from":        "holding",
+          "to":          "relieved",
+          "description": "The reinforcements have arrived. The outpost is saved.",
+          "guard": {
+            "target": "world.relieved", "op": "eq", "value": true
+          },
+          "effects": [
+            {"op": "record", "text": "The relief column rides through the gate. The siege is broken.", "tags": ["victory"]}
+          ]
+        },
+        {
+          "id":          "fall",
+          "from":        "holding",
+          "to":          "fallen",
+          "description": "The outpost is overrun — the walls are gone.",
+          "guard": {
+            "and": [
+              {"target": "world.breached", "op": "eq",  "value": true},
+              {"target": "world.morale",   "op": "lte", "value": 0}
+            ]
+          },
+          "effects": [
+            {"op": "record", "text": "The last defender falls. Silence and smoke.", "tags": ["defeat"]}
+          ]
+        }
+      ]
+    }
+  },
+
+  "triggers": {
+    "starvation": {
+      "when":   {"target": "world.supplies", "op": "eq", "value": 0},
+      "once":   false,
+      "effects": [
+        {"op": "if",
+         "when": {"target": "world.morale", "op": "gt", "value": 2},
+         "then": [{"op": "dec", "target": "world.morale", "value": 2}],
+         "else": [{"op": "set", "target": "world.morale", "value": 0}]},
+        {"op": "record", "text": "Rations run out. Men grow desperate.", "tags": ["starvation"]},
+        {"op": "if",
+         "when": {"target": "world.morale", "op": "lte", "value": 0},
+         "then": [{"op": "set", "target": "world.breached", "value": true}],
+         "else": []}
+      ],
+      "intent": "when supplies hit 0, morale drains and the outpost may fall"
+    },
+
+    "breach_check": {
+      "when": {
+        "and": [
+          {"target": "world.breached", "op": "eq",  "value": true},
+          {"target": "world.morale",   "op": "lte", "value": 0}
+        ]
+      },
+      "once":   true,
+      "effects": [
+        {"op": "set_machine_state", "machine": "arc", "state": "fallen"},
+        {"op": "record", "text": "The outpost has fallen. All is lost.", "tags": ["defeat", "ending"]}
+      ],
+      "intent": "when breached and morale is zero, transition to fallen ending"
+    },
+
+    "nightly_drain": {
+      "every":   1,
+      "effects": [
+        {"op": "if",
+         "when": {"target": "world.supplies", "op": "gt", "value": 0},
+         "then": [{"op": "dec", "target": "world.supplies", "value": 1}],
+         "else": []},
+        {"op": "if",
+         "when": {"target": "world.morale", "op": "gt", "value": 0},
+         "then": [{"op": "dec", "target": "world.morale", "value": 1}],
+         "else": []},
+        {"op": "record", "text": "Another night passes. Supplies dwindle. Morale frays.", "tags": ["night", "periodic"]}
+      ],
+      "intent": "each night tick consumes 1 supply and 1 morale — the slow grind of siege"
+    },
+
+    "relief_arrives": {
+      "when":   {"target": "world.relieved", "op": "eq", "value": true},
+      "once":   true,
+      "effects": [
+        {"op": "set_machine_state", "machine": "arc", "state": "relieved"},
+        {"op": "record", "text": "Relief has arrived! The siege is broken!", "tags": ["victory", "ending"]}
+      ],
+      "intent": "when relieved flag is set (by scheduled op), transition to victory ending"
+    }
+  },
+
+  "entities": {
+    "garrison": {
+      "type":  "garrison",
+      "attrs": {"name": "The Garrison", "strength": 6, "fortitude": 2}
+    },
+    "commander": {
+      "type":  "commander",
+      "attrs": {"name": "Commander Voss", "resolve": 7}
+    }
+  },
+
+  "setup": [
+    {"op": "schedule", "in": 3, "do": [
+      {"op": "set",    "target": "world.relieved", "value": true},
+      {"op": "record", "text": "Relief Column dispatched from the capital arrives at the outpost.", "tags": ["schedule", "relief"]}
+    ]}
+  ]
+}
