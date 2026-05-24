@@ -1074,12 +1074,14 @@ function ensureRooms(m) {
   }
 }
 
+function clampZoom(z) { return Math.max(0.35, Math.min(2.6, Math.round(z * 100) / 100)); }
 function zoomControls() {
-  const setZ = (z) => { S.mapZoom = Math.max(0.4, Math.min(2.2, Math.round(z * 10) / 10)); renderMain(); };
+  const setZ = (z) => { S.mapZoom = clampZoom(z); renderMain(); };
   return h('span', { class: 'inline', style: 'gap:4px' },
     h('button', { class: 'tiny', onclick: () => setZ((S.mapZoom || 1) - 0.2) }, '−'),
     h('span', { class: 'hint', style: 'min-width:40px;text-align:center' }, Math.round((S.mapZoom || 1) * 100) + '%'),
-    h('button', { class: 'tiny', onclick: () => setZ((S.mapZoom || 1) + 0.2) }, '+'));
+    h('button', { class: 'tiny', onclick: () => setZ((S.mapZoom || 1) + 0.2) }, '+'),
+    h('span', { class: 'hint' }, 'scroll to zoom · drag empty space to pan'));
 }
 
 function renderGrid(main, m, opts) {
@@ -1093,9 +1095,9 @@ function renderGrid(main, m, opts) {
     : 'drag people & props to restage them for this scene — rooms are shared across all scenes'));
   main.appendChild(tb);
 
-  const wrap = h('div', { style: 'display:flex;gap:14px;align-items:flex-start' });
+  const wrap = h('div', { style: 'display:flex;gap:14px;align-items:stretch;flex:1;min-height:0' });
   wrap.appendChild(buildCanvas(m, mode, sc));
-  const panel = h('div', { style: 'flex:0 0 300px' });
+  const panel = h('div', { style: 'flex:0 0 300px;overflow:auto' });
   panel.appendChild(mode === 'layout' ? roomInspector(m) : sceneInspector(m, sc));
   wrap.appendChild(panel);
   main.appendChild(wrap);
@@ -1158,16 +1160,41 @@ function setToken(ent, room, x, y, m, mode, sc) {
 function buildCanvas(m, mode, sc) {
   const cell = (m.cell || 28) * (S.mapZoom || 1);
   const places = getPlaces(m);
-  let maxX = 18, maxY = 12;
-  for (const p of places) { const r = m.rooms[p.id]; if (r) { maxX = Math.max(maxX, r.x + r.w + 2); maxY = Math.max(maxY, r.y + r.h + 2); } }
-  const W = maxX * cell, H = maxY * cell;
-  const box = h('div', { style: 'flex:1;min-width:0;max-height:660px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px' });
+  let maxX = 0, maxY = 0;
+  for (const p of places) { const r = m.rooms[p.id]; if (r) { maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h); } }
+  // Endless feel: always offer a large grid that grows past the furthest room.
+  const cols = Math.max(160, maxX + 50), rows = Math.max(110, maxY + 50);
+  const W = cols * cell, H = rows * cell;
+  const box = h('div', { style: 'flex:1;min-width:0;align-self:stretch;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:grab' });
   const svg = s('svg', { width: W, height: H, style: 'display:block' });
 
   const grid = s('g', {});
-  for (let x = 0; x <= maxX; x++) grid.appendChild(s('line', { x1: x * cell, y1: 0, x2: x * cell, y2: H, stroke: '#1d212b', 'stroke-width': 1 }));
-  for (let y = 0; y <= maxY; y++) grid.appendChild(s('line', { x1: 0, y1: y * cell, x2: W, y2: y * cell, stroke: '#1d212b', 'stroke-width': 1 }));
+  for (let x = 0; x <= cols; x++) grid.appendChild(s('line', { x1: x * cell, y1: 0, x2: x * cell, y2: H, stroke: '#1d212b', 'stroke-width': 1 }));
+  for (let y = 0; y <= rows; y++) grid.appendChild(s('line', { x1: 0, y1: y * cell, x2: W, y2: y * cell, stroke: '#1d212b', 'stroke-width': 1 }));
   svg.appendChild(grid);
+
+  // transparent background: drag to pan, click to deselect
+  const bg = s('rect', { x: 0, y: 0, width: W, height: H, fill: 'transparent' });
+  bg.addEventListener('mousedown', (ev) => {
+    ev.preventDefault();
+    const sx = ev.clientX, sy = ev.clientY, sl = box.scrollLeft, st = box.scrollTop; let moved = false;
+    const mm = (e2) => { moved = true; box.scrollLeft = sl - (e2.clientX - sx); box.scrollTop = st - (e2.clientY - sy); };
+    const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (!moved && S.mapSel) { S.mapSel = null; renderMain(); } };
+    document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
+  });
+  svg.appendChild(bg);
+
+  // scroll wheel zooms toward the cursor
+  box.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = box.getBoundingClientRect();
+    const offX = e.clientX - rect.left, offY = e.clientY - rect.top;
+    const cellX = (offX + box.scrollLeft) / cell, cellY = (offY + box.scrollTop) / cell;
+    const nz = clampZoom((S.mapZoom || 1) * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+    if (nz === (S.mapZoom || 1)) return;
+    S.mapZoom = nz; S.mapAnchor = { cellX, cellY, offX, offY };
+    renderMain();
+  }, { passive: false });
 
   const edgeG = s('g', {}); svg.appendChild(edgeG);
   const drawEdges = () => {
@@ -1224,6 +1251,10 @@ function buildCanvas(m, mode, sc) {
     svg.appendChild(g);
   }
   box.appendChild(svg);
+  // keep the point under the cursor stable across a wheel-zoom re-render
+  requestAnimationFrame(() => {
+    if (S.mapAnchor) { box.scrollLeft = S.mapAnchor.cellX * cell - S.mapAnchor.offX; box.scrollTop = S.mapAnchor.cellY * cell - S.mapAnchor.offY; S.mapAnchor = null; }
+  });
   return box;
 }
 
@@ -1544,6 +1575,12 @@ function renderSidebar() {
 
 function renderMain() {
   const main = $('#main');
+  // The map is a full-height flex column so its canvas can fill all space;
+  // other sections keep the default scrolling block layout.
+  const mapMode = S.section === 'map';
+  main.style.display = mapMode ? 'flex' : '';
+  main.style.flexDirection = mapMode ? 'column' : '';
+  main.style.overflow = mapMode ? 'hidden' : '';
   main.innerHTML = '';
   if (!S.def) { main.appendChild(h('div', { class: 'empty' }, 'Open or create a game file to begin.')); return; }
   const label = SECTIONS.find(s => s[0] === S.section)[1];
