@@ -65,10 +65,15 @@ func (a *app) newSetCmd() *cobra.Command {
 				if err := engine.ForceWrite(st, path, value, false); err != nil {
 					return a.emit(c, "set", nil, coded("APPLY_FAILED", err, nil))
 				}
+				res := engine.SettleInstance(def, st)
 				if err := s.SaveState(st); err != nil {
 					return a.emit(c, "set", nil, coded("IO_ERROR", err, nil))
 				}
-				data, err := stateData(def, st, nil)
+				data, err := stateData(def, st, map[string]any{
+					"clock":    st.Clock,
+					"fired":    res.Fired,
+					"warnings": res.Warnings,
+				})
 				if err != nil {
 					return a.emit(c, "set", nil, coded("ERROR", err, nil))
 				}
@@ -139,10 +144,15 @@ func (a *app) newRmCmd() *cobra.Command {
 				if err := engine.ForceWrite(st, path, nil, true); err != nil {
 					return a.emit(c, "rm", nil, coded("APPLY_FAILED", err, nil))
 				}
+				res := engine.SettleInstance(def, st)
 				if err := s.SaveState(st); err != nil {
 					return a.emit(c, "rm", nil, coded("IO_ERROR", err, nil))
 				}
-				data, err := stateData(def, st, nil)
+				data, err := stateData(def, st, map[string]any{
+					"clock":    st.Clock,
+					"fired":    res.Fired,
+					"warnings": res.Warnings,
+				})
 				if err != nil {
 					return a.emit(c, "rm", nil, coded("ERROR", err, nil))
 				}

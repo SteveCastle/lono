@@ -201,6 +201,28 @@ func TestSetValidatedFiresTriggers(t *testing.T) {
 	}
 }
 
+// TestSetForceFiresTriggers confirms that a --force runtime set still runs the
+// reactive trigger fixpoint, surfacing fired ids and applying consequences.
+func TestSetForceFiresTriggers(t *testing.T) {
+	dir := t.TempDir()
+	seedAlarmGame(t, dir)
+	runCLI(t, dir, "play", "start", "ag", "--id", "sf2", "--seed", "1")
+
+	env, _ := runCLI(t, dir, "set", "sf2", "world/alarm", "--value", "true", "--force")
+	if !env.OK {
+		t.Fatalf("set --force world/alarm=true failed: %+v", env.Error)
+	}
+	data := env.Data.(map[string]any)
+	fired, _ := data["fired"].([]any)
+	if !containsStr(fired, "raise") {
+		t.Fatalf("expected fired to contain trigger \"raise\" after --force, got %v", data["fired"])
+	}
+	st := data["state"].(map[string]any)
+	if st["world"].(map[string]any)["lockdown"] != true {
+		t.Fatalf("expected lockdown=true after --force settle, got %v", st["world"].(map[string]any)["lockdown"])
+	}
+}
+
 // containsStr reports whether xs (a decoded JSON array) contains the string s.
 func containsStr(xs []any, s string) bool {
 	for _, x := range xs {
