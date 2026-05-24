@@ -43,6 +43,27 @@ func evalLeaf(st *State, ctx *evalCtx, g *Guard) (bool, error) {
 	if g.Op == "exists" {
 		return pathExists(st, ctx, g.Target), nil
 	}
+	// contains: target must be a []any; returns whether g.Value (string) is a member.
+	if g.Op == "contains" {
+		v, err := resolvePath(st, ctx, g.Target)
+		if err != nil {
+			return false, err
+		}
+		arr, ok := v.([]any)
+		if !ok {
+			return false, fmt.Errorf("contains: target %q is not a set/array", g.Target)
+		}
+		want, ok := g.Value.(string)
+		if !ok {
+			return false, fmt.Errorf("contains: value must be a string, got %T", g.Value)
+		}
+		for _, item := range arr {
+			if item == want {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 	left, err := resolvePath(st, ctx, g.Target)
 	if err != nil {
 		return false, err

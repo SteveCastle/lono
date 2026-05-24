@@ -78,6 +78,72 @@ func TestCompareValues(t *testing.T) {
 	}
 }
 
+func stateWithSetAttr() *State {
+	st, _ := NewInstance(miniDef(), "r", 1)
+	st.Entities["player"] = &Entity{
+		Type:      "character",
+		Attrs:     map[string]any{"health": float64(80), "clues": []any{"alibi", "motive"}},
+		Inventory: map[string]int{},
+	}
+	return st
+}
+
+func TestContainsGuard(t *testing.T) {
+	st := stateWithSetAttr()
+	ctx := &evalCtx{}
+
+	// contains: present element -> true.
+	g := Guard{Target: "entity.player.clues", Op: "contains", Value: "alibi"}
+	got, err := evalGuard(st, ctx, &g)
+	if err != nil {
+		t.Fatalf("contains err: %v", err)
+	}
+	if !got {
+		t.Fatal("contains present element should return true")
+	}
+
+	// contains: absent element -> false.
+	g2 := Guard{Target: "entity.player.clues", Op: "contains", Value: "weapon"}
+	got2, err := evalGuard(st, ctx, &g2)
+	if err != nil {
+		t.Fatalf("contains err: %v", err)
+	}
+	if got2 {
+		t.Fatal("contains absent element should return false")
+	}
+
+	// contains: non-array target -> error.
+	g3 := Guard{Target: "entity.player.health", Op: "contains", Value: "x"}
+	if _, err := evalGuard(st, ctx, &g3); err == nil {
+		t.Fatal("contains on non-array should error")
+	}
+}
+
+func TestLenPathGuard(t *testing.T) {
+	st := stateWithSetAttr() // player.clues = ["alibi","motive"]
+	ctx := &evalCtx{}
+
+	// len.entity.player.clues should be 2.
+	g := Guard{Target: "len.entity.player.clues", Op: "gte", Value: float64(2)}
+	got, err := evalGuard(st, ctx, &g)
+	if err != nil {
+		t.Fatalf("len guard err: %v", err)
+	}
+	if !got {
+		t.Fatal("len gte 2 should be true for 2-element set")
+	}
+
+	// len == 1 should be false for 2-element set.
+	g2 := Guard{Target: "len.entity.player.clues", Op: "eq", Value: float64(1)}
+	got2, err := evalGuard(st, ctx, &g2)
+	if err != nil {
+		t.Fatalf("len guard err: %v", err)
+	}
+	if got2 {
+		t.Fatal("len eq 1 should be false for 2-element set")
+	}
+}
+
 func TestExistsSemantics(t *testing.T) {
 	st := stateWithData() // player exists with inventory gold=50 (no potion); trust aria->player exists
 	ctx := &evalCtx{}
