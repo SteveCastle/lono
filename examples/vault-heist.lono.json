@@ -1,0 +1,479 @@
+{
+  "id": "vault-heist",
+  "name": "The Voss Foundation Job",
+  "version": 1,
+  "description": "You have one night to crack the Voss Foundation vault, lift the bearer bonds, and vanish before the dawn patrol. Everything depends on your kit, your nerve, and a single roll of the dice.",
+  "intent": "showcase inventory, equipment, dice skill-checks (roll/if/compute/$path), world vars gating actions, a set of collected clues, journal recording, and clean vs. caught endings",
+
+  "world": {
+    "alarm": {
+      "type": "bool",
+      "default": false,
+      "description": "True once the security alarm has been triggered"
+    },
+    "loot": {
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 200000,
+      "description": "Value of bonds and cash extracted from the vault, in dollars"
+    },
+    "guards_alerted": {
+      "type": "bool",
+      "default": false,
+      "description": "True once guards have been dispatched to the vault floor"
+    },
+    "safe_cracked": {
+      "type": "bool",
+      "default": false,
+      "description": "True once the main safe has been opened"
+    },
+    "power_cut": {
+      "type": "bool",
+      "default": false,
+      "description": "True if the player has cut the building power (disables electronic locks)"
+    }
+  },
+
+  "entityTypes": {
+    "character": {
+      "description": "A person in the heist — player or NPC",
+      "attributes": {
+        "name":       {"type": "string"},
+        "skill":      {"type": "int", "default": 5, "min": 0, "max": 20,
+                       "description": "General skill level used in checks"},
+        "clues":      {"type": "set", "elem": "string",
+                       "description": "Evidence and intel collected during the job"},
+        "location":   {"type": "ref", "refType": "location",
+                       "description": "Current position in the building"}
+      },
+      "slots": {
+        "torso": {"accepts": ["disguise"]},
+        "hand":  {"accepts": ["tool"]}
+      }
+    },
+    "location": {
+      "description": "A room or area in the Voss Foundation building",
+      "attributes": {
+        "name":   {"type": "string"},
+        "locked": {"type": "bool", "default": false,
+                   "description": "Whether this area requires bypassing to enter"}
+      }
+    }
+  },
+
+  "itemTypes": {
+    "lockpick": {
+      "maxStack": 10,
+      "description": "Professional-grade picks. Consumed when bypassing mechanical locks."
+    },
+    "bond": {
+      "maxStack": 100,
+      "description": "Bearer bond from the Voss vault — each worth ~$1,200, negotiable, untraceable."
+    },
+    "cash": {
+      "maxStack": 100,
+      "description": "Paper money from the petty-cash drawer, bundled in stacks."
+    },
+    "security_card": {
+      "maxStack": 1,
+      "description": "A stolen access card that bypasses electronic locks — useless if power is cut."
+    },
+    "foundation_uniform": {
+      "category":   "disguise",
+      "equippable": true,
+      "attributes": {
+        "authority":    8,
+        "conspicuous":  2,
+        "description":  "Voss Foundation maintenance uniform, ID clipped to the pocket"
+      },
+      "description": "Blends in perfectly — as long as nobody looks too closely at the ID."
+    },
+    "crowbar": {
+      "category":   "tool",
+      "equippable": true,
+      "attributes": {
+        "leverage":    7,
+        "noise":       9,
+        "description": "Heavy pry-bar — effective but loud"
+      },
+      "description": "Heavy steel pry-bar. Gets the job done. Loudly."
+    }
+  },
+
+  "relationshipTypes": {
+    "knows": {
+      "description": "Whether one character has useful intel about another, asymmetric",
+      "from":     "character",
+      "to":       "character",
+      "directed": true,
+      "attributes": {
+        "detail": {"type": "int", "default": 0, "min": 0, "max": 10,
+                   "description": "How much useful intelligence the from side has on the to side"}
+      }
+    }
+  },
+
+  "derived": {
+    "escape_ready": {
+      "over":   "relationships",
+      "where":  {"type": "knows", "from": "player", "to": "watcher"},
+      "reduce": "count",
+      "intent": "sanity check: 1 if the player knows the watcher (getaway driver is on standby)"
+    }
+  },
+
+  "machines": {
+    "arc": {
+      "description": "Narrative arc — movement through the heist from approach to outcome",
+      "initial": "approach",
+      "states": [
+        "approach", "lobby", "vault_corridor", "vault_room",
+        "escaped_clean", "escaped_hot", "caught"
+      ],
+      "stateMeta": {
+        "approach": {
+          "description": "You're parked half a block from the Voss Foundation. It's 2:17 AM. The building looks quiet. A guard does a lazy loop past the lobby windows every twelve minutes. You have a window."
+        },
+        "lobby": {
+          "description": "The lobby marble is cold underfoot. Emergency lighting only — pale green strips along the floor. The guard station is unmanned. The elevator bank is ahead. The stairwell door is to the left."
+        },
+        "vault_corridor": {
+          "description": "Sub-basement. The air is recycled and stale. Motion sensors blink red at each end of the corridor. The vault door is at the far end — a Sargent & Greenleaf job with an electronic override panel."
+        },
+        "vault_room": {
+          "description": "You're inside. The vault smells of old paper and gun oil. The main safe — a squat, matte-black Diebold — sits against the back wall. The petty-cash drawer is open on the desk."
+        },
+        "escaped_clean": {
+          "terminal":    true,
+          "ending":      true,
+          "description": "You surface three blocks away and slide into the back of the watcher's car. No sirens. No tail. The bonds are in the bag on your lap. This is what a good night looks like.",
+          "intent":      "reached when loot > 0 and alarm never sounded — the perfect job"
+        },
+        "escaped_hot": {
+          "terminal":    true,
+          "ending":      true,
+          "description": "You make the car with thirty seconds to spare — sirens already closing behind you. The bonds are in hand, the driver floors it. You got out, just not clean. There will be questions. There always are.",
+          "intent":      "reached when loot > 0 and alarm is true but player escapes before caught"
+        },
+        "caught": {
+          "terminal":    true,
+          "ending":      true,
+          "description": "The lights snap on. Three security guards and one very unhappy detective fill the doorway. The bonds are on the floor. Your picks are in your pocket. You are, as the detective will later remark, not hard to prosecute.",
+          "intent":      "reached when alarm fires and the guard response closes in (via trigger schedule)"
+        }
+      },
+      "transitions": [
+        {
+          "id":          "enter_lobby",
+          "from":        "approach",
+          "to":          "lobby",
+          "description": "Move to the lobby entrance — use the security card or your disguise to pass the door sensor.",
+          "guard": {
+            "or": [
+              {"target": "inventory.player.security_card", "op": "gt",  "value": 0},
+              {"target": "equipped.player.torso",          "op": "ne",  "value": ""}
+            ]
+          },
+          "effects": [
+            {"op": "record", "text": "The door clicks open. You step inside. The lobby is dim and cool.",
+             "tags": ["movement", "entry"]}
+          ]
+        },
+        {
+          "id":          "take_stairs_to_vault",
+          "from":        "lobby",
+          "to":          "vault_corridor",
+          "description": "Take the stairwell down to the sub-basement — avoids the camera in the elevator.",
+          "effects": [
+            {"op": "record", "text": "The stairwell door is heavy. Four flights down. Your footsteps sound loud in the concrete shaft.",
+             "tags": ["movement", "stealth"]}
+          ]
+        },
+        {
+          "id":          "bypass_vault_door",
+          "from":        "vault_corridor",
+          "to":          "vault_room",
+          "description": "Bypass the vault door's electronic override using your security card, or by cutting power first.",
+          "guard": {
+            "or": [
+              {"target": "inventory.player.security_card", "op": "gt",   "value": 0},
+              {"target": "world.power_cut",                "op": "eq",   "value": true}
+            ]
+          },
+          "effects": [
+            {"op": "if",
+             "when": {"target": "inventory.player.security_card", "op": "gt", "value": 0},
+             "then": [
+               {"op": "remove_item", "entity": "player", "item": "security_card", "count": 1},
+               {"op": "record", "text": "The card reader blinks green. The vault door unseals with a pressurised sigh.",
+                "tags": ["vault", "bypass"]}
+             ],
+             "else": [
+               {"op": "record", "text": "With the power cut, the electronic locks disengage. The mechanical failsafe kicks you out a gap just wide enough.",
+                "tags": ["vault", "bypass", "power"]}
+             ]},
+            {"op": "add_to", "target": "entity.player.clues", "value": "vault_entry_logged"}
+          ]
+        },
+        {
+          "id":          "cut_power",
+          "from":        "vault_corridor",
+          "to":          "vault_corridor",
+          "description": "Find the breaker panel and cut building power — disables electronic locks but triggers a 4-minute backup-power window before alarms self-test.",
+          "guard": {
+            "and": [
+              {"target": "world.power_cut",  "op": "eq", "value": false},
+              {"target": "world.alarm",      "op": "eq", "value": false},
+              {"target": "inventory.player.lockpick", "op": "gt", "value": 0}
+            ]
+          },
+          "effects": [
+            {"op": "remove_item", "entity": "player", "item": "lockpick", "count": 1},
+            {"op": "set",    "target": "world.power_cut",  "value": true},
+            {"op": "record", "text": "You find the panel behind a utility door and pop the main breaker. The corridor goes dark. Backup lighting — orange and thin — kicks on after three seconds.",
+             "tags": ["power", "stealth"]}
+          ]
+        },
+        {
+          "id":          "crack_safe",
+          "from":        "vault_room",
+          "to":          "vault_room",
+          "description": "Attempt to crack the Diebold safe — roll Dexterity + Skill vs. DC 12. Success nets the bonds; failure triggers the alarm.",
+          "guard": {
+            "and": [
+              {"target": "world.safe_cracked",         "op": "eq", "value": false},
+              {"target": "inventory.player.lockpick",  "op": "gt", "value": 0}
+            ]
+          },
+          "effects": [
+            {"op": "remove_item", "entity": "player", "item": "lockpick", "count": 1},
+            {"op": "roll", "dice": "1d20", "store": "crack"},
+            {"op": "if",
+             "when": {"target": "roll.crack", "op": "gte", "value": 12},
+             "then": [
+               {"op": "set",      "target": "world.safe_cracked", "value": true},
+               {"op": "compute",
+                "target": "world.loot",
+                "fn":     "add",
+                "a":      {"$path": "world.loot"},
+                "b":      120000},
+               {"op": "add_item", "entity": "player", "item": "bond",  "count": 100},
+               {"op": "add_to",   "target": "entity.player.clues", "value": "safe_contents_seen"},
+               {"op": "record",
+                "text": "The tumblers align. The safe exhales. Inside: bearer bonds, bundled and beautiful.",
+                "tags": ["vault", "success", "loot"]}
+             ],
+             "else": [
+               {"op": "set",    "target": "world.alarm", "value": true},
+               {"op": "add_to", "target": "entity.player.clues", "value": "alarm_triggered"},
+               {"op": "record",
+                "text": "Something catches. A faint click — then the alarm siren erupts through the building.",
+                "tags": ["vault", "fail", "alarm"]}
+             ]}
+          ]
+        },
+        {
+          "id":          "grab_petty_cash",
+          "from":        "vault_room",
+          "to":          "vault_room",
+          "description": "Scoop the petty-cash drawer — low risk, guaranteed money.",
+          "guard": {
+            "target": "inventory.player.cash", "op": "eq", "value": 0
+          },
+          "effects": [
+            {"op": "add_item", "entity": "player", "item": "cash",  "count": 8},
+            {"op": "compute",
+             "target": "world.loot",
+             "fn":     "add",
+             "a":      {"$path": "world.loot"},
+             "b":      8000},
+            {"op": "record", "text": "Eight thousand in mixed bills. Not the plan, but a plan.",
+             "tags": ["loot", "cash"]}
+          ]
+        },
+        {
+          "id":          "force_safe",
+          "from":        "vault_room",
+          "to":          "vault_room",
+          "description": "Lever the safe open with the crowbar — guaranteed success, guaranteed noise.",
+          "guard": {
+            "and": [
+              {"target": "world.safe_cracked",  "op": "eq", "value": false},
+              {"target": "equipped.player.hand", "op": "eq", "value": "crowbar"}
+            ]
+          },
+          "effects": [
+            {"op": "set",      "target": "world.safe_cracked", "value": true},
+            {"op": "set",      "target": "world.alarm",        "value": true},
+            {"op": "compute",
+             "target": "world.loot",
+             "fn":     "add",
+             "a":      {"$path": "world.loot"},
+             "b":      120000},
+            {"op": "add_item", "entity": "player", "item": "bond", "count": 100},
+            {"op": "add_to",   "target": "entity.player.clues", "value": "forced_entry_evidence"},
+            {"op": "record",
+             "text": "The crowbar bites and the safe door buckles. Bonds secured — but the noise was catastrophic. The alarm is live.",
+             "tags": ["vault", "forced", "alarm", "loot"]}
+          ]
+        },
+        {
+          "id":          "escape_clean",
+          "from":        "*",
+          "to":          "escaped_clean",
+          "description": "Walk out the way you came in — calm, quiet, clean.",
+          "guard": {
+            "and": [
+              {"target": "world.loot",  "op": "gt", "value": 0},
+              {"target": "world.alarm", "op": "eq", "value": false}
+            ]
+          },
+          "effects": [
+            {"op": "record",
+             "text": "You take the stairs, cross the lobby, and step into the night. Nobody sees you leave.",
+             "tags": ["escape", "clean"]}
+          ]
+        },
+        {
+          "id":          "escape_hot",
+          "from":        "*",
+          "to":          "escaped_hot",
+          "description": "Run for the exit — alarm is live but you have the loot and the guards haven't cornered you yet.",
+          "guard": {
+            "and": [
+              {"target": "world.loot",  "op": "gt", "value": 0},
+              {"target": "world.alarm", "op": "eq", "value": true}
+            ]
+          },
+          "effects": [
+            {"op": "record",
+             "text": "You sprint. The siren screams behind you. The car door is already open.",
+             "tags": ["escape", "hot"]}
+          ]
+        }
+      ]
+    }
+  },
+
+  "beats": {
+    "vault_first_look": {
+      "text":         "The Diebold safe dominates the back wall — matte-black, squat, and quietly confident. It has a combination dial and an electronic override panel. Professional. Expensive. Very closed.",
+      "machineState": {"machine": "arc", "state": "vault_room"},
+      "once":         true,
+      "intent":       "first impression of the safe on entering the vault room"
+    },
+    "alarm_urgency": {
+      "text":         "The alarm is live. You have minutes before the response team arrives. Every second you stay is one more second you can be caught.",
+      "machineState": {"machine": "arc", "state": "vault_room"},
+      "guard":        {"target": "world.alarm", "op": "eq", "value": true},
+      "once":         false,
+      "intent":       "ambient reminder of urgency once alarm sounds — repeatable to keep pressure on"
+    },
+    "loot_in_hand": {
+      "text":         "The bonds are in your bag. This is the part of the job where everything that comes next is consequence.",
+      "machineState": {"machine": "arc", "state": "vault_room"},
+      "guard":        {"target": "world.loot", "op": "gt", "value": 0},
+      "once":         true,
+      "intent":       "fires once loot is secured — the pivot point of the heist"
+    },
+    "disguise_advantage": {
+      "text":         "The uniform makes you invisible. A maintenance tech in the sub-basement at 2 AM is unusual but explicable. You are a story someone can tell themselves.",
+      "machineState": {"machine": "arc", "state": "vault_corridor"},
+      "guard":        {"target": "equipped.player.torso", "op": "ne", "value": ""},
+      "once":         true,
+      "intent":       "fires in the vault corridor when the player is wearing the disguise — notes the advantage"
+    },
+    "power_cut_effect": {
+      "text":         "In the dark, the building holds its breath. Every electronic system is suspended. Somewhere above you, a guard reaches for a radio.",
+      "machineState": {"machine": "arc", "state": "vault_corridor"},
+      "guard":        {"target": "world.power_cut", "op": "eq", "value": true},
+      "once":         true,
+      "intent":       "fires when power is cut in the vault corridor — atmosphere + consequence foreshadow"
+    }
+  },
+
+  "triggers": {
+    "on_alarm": {
+      "when":  {"target": "world.alarm", "op": "eq", "value": true},
+      "once":  true,
+      "effects": [
+        {"op": "set",      "target": "world.guards_alerted", "value": true},
+        {"op": "schedule", "in": 3, "do": [
+          {"op": "set_machine_state", "machine": "arc", "state": "caught"}
+        ]},
+        {"op": "record",
+         "text": "The alarm rings through the building. Somewhere above you, a radio crackles. Response team dispatched — three minutes.",
+         "tags": ["alarm", "trigger"]}
+      ],
+      "intent": "alarm alerts guards and schedules capture in 3 ticks — advance the clock to make it fire"
+    }
+  },
+
+  "lore": {
+    "voss_foundation": {
+      "title":   "The Voss Foundation",
+      "text":    "A private foundation established in 1961, ostensibly for the arts. Its actual function — laundering funds for three generations of Voss family business — is an open secret in certain circles. The bearer bonds in its vault represent fifteen years of structured misappropriation.",
+      "tags":    ["voss", "foundation", "background"],
+      "intent":  "moral context — the player is stealing from thieves"
+    },
+    "the_diebold": {
+      "title":   "The Diebold TL-30",
+      "text":    "A TL-30 tool-resistant safe. Combination dial with an electronic override panel added in 2019. The electronic bypass requires a valid access card or an open circuit on the override panel (achievable by cutting building power). The mechanical tumblers can be picked by a skilled operator — or forced, loudly, with sufficient leverage.",
+      "tags":    ["safe", "vault", "technical"],
+      "subject": "vault_room",
+      "intent":  "technical briefing on the primary obstacle — surfaces player options"
+    },
+    "watcher_note": {
+      "title":   "The Watcher",
+      "text":    "Your driver. Parked on Fenwick Street with the engine idling and a scanner tuned to the response-team frequency. If you're not at the car in fifteen minutes, she leaves without you. Those are the rules.",
+      "tags":    ["watcher", "escape", "crew"],
+      "subject": "watcher",
+      "intent":  "establishes time pressure and the escape route"
+    }
+  },
+
+  "entities": {
+    "approach_point": {
+      "type":        "location",
+      "attrs":       {"name": "Fenwick Street", "locked": false},
+      "description": "Half a block from the Voss Foundation. Your car is here. The watcher watches."
+    },
+    "lobby": {
+      "type":        "location",
+      "attrs":       {"name": "Voss Foundation Lobby", "locked": false},
+      "description": "Cold marble, dim emergency lighting. The guard station is empty at this hour."
+    },
+    "vault_corridor": {
+      "type":        "location",
+      "attrs":       {"name": "Sub-Basement Corridor", "locked": true},
+      "description": "Concrete walls, recycled air, motion sensors blinking at each end."
+    },
+    "vault_room": {
+      "type":        "location",
+      "attrs":       {"name": "The Vault", "locked": true},
+      "description": "Old paper and gun oil. The Diebold sits against the back wall like it owns the place."
+    },
+    "player": {
+      "type":        "character",
+      "attrs":       {"name": "You", "skill": 8, "location": "approach_point"},
+      "inventory":   {
+        "lockpick":         3,
+        "security_card":    1,
+        "foundation_uniform": 1
+      },
+      "equipped":    {"torso": "foundation_uniform"},
+      "description": "A professional. You've done this before. Never quite like this."
+    },
+    "watcher": {
+      "type":        "character",
+      "attrs":       {"name": "The Watcher", "skill": 6, "location": "approach_point"},
+      "description": "Your driver. Parked on Fenwick Street. Engine running. Clock ticking."
+    }
+  },
+
+  "relationships": [
+    {"type": "knows", "from": "player",  "to": "watcher", "attrs": {"detail": 8}},
+    {"type": "knows", "from": "watcher", "to": "player",  "attrs": {"detail": 6}}
+  ]
+}
