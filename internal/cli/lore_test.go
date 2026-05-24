@@ -153,3 +153,103 @@ func TestDefineLoreValidation(t *testing.T) {
 		t.Fatal("expected failure for empty text")
 	}
 }
+
+// TestLoreListAndShow exercises the lore list and lore show CLI commands.
+func TestLoreListAndShow(t *testing.T) {
+	dir := t.TempDir()
+	runCLI(t, dir, "game", "create", "g")
+
+	// Define two lore entries: one tagged, one with a subject.
+	runCLI(t, dir, "define", "lore", "set", "g", "founding",
+		"--spec", `{"title":"The Founding","text":"Built in Year 312.","tags":["history","manor"],"when":"Year 312"}`)
+	runCLI(t, dir, "define", "lore", "set", "g", "locket",
+		"--spec", `{"title":"The Locket","text":"Silver locket.","subject":"player"}`)
+
+	// lore list — shows both entries.
+	env, _ := runCLI(t, dir, "lore", "list", "g")
+	if !env.OK {
+		t.Fatalf("lore list failed: %+v", env.Error)
+	}
+	b, _ := json.Marshal(env.Data)
+	var listData map[string]any
+	_ = json.Unmarshal(b, &listData)
+	items, ok := listData["lore"].([]any)
+	if !ok {
+		t.Fatalf("lore key missing or wrong type: %v", listData)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 lore items, got %d: %v", len(items), items)
+	}
+	// Items are sorted by id: founding < locket.
+	first := items[0].(map[string]any)
+	if first["id"] != "founding" {
+		t.Errorf("first item id = %v, want founding", first["id"])
+	}
+	second := items[1].(map[string]any)
+	if second["id"] != "locket" {
+		t.Errorf("second item id = %v, want locket", second["id"])
+	}
+
+	// lore list --tag history — only founding.
+	envTag, _ := runCLI(t, dir, "lore", "list", "g", "--tag", "history")
+	if !envTag.OK {
+		t.Fatalf("lore list --tag failed: %+v", envTag.Error)
+	}
+	bTag, _ := json.Marshal(envTag.Data)
+	var tagData map[string]any
+	_ = json.Unmarshal(bTag, &tagData)
+	tagItems := tagData["lore"].([]any)
+	if len(tagItems) != 1 {
+		t.Fatalf("expected 1 tagged item, got %d", len(tagItems))
+	}
+	if tagItems[0].(map[string]any)["id"] != "founding" {
+		t.Errorf("tagged item id = %v, want founding", tagItems[0].(map[string]any)["id"])
+	}
+
+	// lore list --subject player — only locket.
+	envSub, _ := runCLI(t, dir, "lore", "list", "g", "--subject", "player")
+	if !envSub.OK {
+		t.Fatalf("lore list --subject failed: %+v", envSub.Error)
+	}
+	bSub, _ := json.Marshal(envSub.Data)
+	var subData map[string]any
+	_ = json.Unmarshal(bSub, &subData)
+	subItems := subData["lore"].([]any)
+	if len(subItems) != 1 {
+		t.Fatalf("expected 1 subject item, got %d", len(subItems))
+	}
+	if subItems[0].(map[string]any)["id"] != "locket" {
+		t.Errorf("subject item id = %v, want locket", subItems[0].(map[string]any)["id"])
+	}
+
+	// lore show founding — full entry including text.
+	envShow, _ := runCLI(t, dir, "lore", "show", "g", "founding")
+	if !envShow.OK {
+		t.Fatalf("lore show founding failed: %+v", envShow.Error)
+	}
+	bShow, _ := json.Marshal(envShow.Data)
+	var showData map[string]any
+	_ = json.Unmarshal(bShow, &showData)
+	entry, ok := showData["entry"].(map[string]any)
+	if !ok {
+		t.Fatalf("entry missing from lore show response: %v", showData)
+	}
+	if entry["text"] != "Built in Year 312." {
+		t.Errorf("text: got %v", entry["text"])
+	}
+	if entry["title"] != "The Founding" {
+		t.Errorf("title: got %v", entry["title"])
+	}
+	if showData["id"] != "founding" {
+		t.Errorf("id: got %v", showData["id"])
+	}
+
+	// lore show missing id — NOT_FOUND.
+	envMiss, _ := runCLI(t, dir, "lore", "show", "g", "no_such")
+	if envMiss.OK {
+		t.Fatal("expected NOT_FOUND for unknown lore id")
+	}
+	if envMiss.Error == nil || envMiss.Error.Code != "NOT_FOUND" {
+		t.Fatalf("expected NOT_FOUND code, got: %+v", envMiss.Error)
+	}
+}
