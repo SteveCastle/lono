@@ -1174,10 +1174,16 @@ function mapInspector(m, places, exits) {
     .concat(Object.keys(S.def.entities).filter(id => id !== sel && S.def.entities[id].type !== m.placeType && !moverTypes(m).includes(S.def.entities[id].type)));
   const uniq = [...new Set(candidates)];
   if (uniq.length) {
-    const selBox = selectInput({ v: '' }, 'v', uniq, { emptyLabel: '+ place someone/something here…' });
+    const selBox = selectInput({ v: '' }, 'v', uniq.map(id => ({ value: id, label: nameOf(id) })), { emptyLabel: '+ place a character or prop here…' });
     selBox.addEventListener('change', () => { if (selBox.value) { placeEntity(selBox.value, sel, m); } });
     box.appendChild(h('div', { class: 'field', style: 'margin-top:6px' }, selBox));
   }
+
+  // items sitting in this place (the place entity's starting inventory)
+  box.appendChild(h('div', { class: 'pt-section-label' }, 'Items in this place (starting)'));
+  e.inventory = e.inventory || {};
+  if (!itemTypeNames().length) box.appendChild(h('div', { class: 'hint' }, 'define item types (Types → Item types) to stock this place'));
+  else box.appendChild(invEditor(e.inventory));
 
   // exits
   box.appendChild(h('div', { class: 'pt-section-label' }, 'Exits from here'));
@@ -1203,15 +1209,45 @@ function mapInspector(m, places, exits) {
   return box;
 }
 
-function placeEntity(id, place, m) {
-  const e = S.def.entities[id];
-  const et = S.def.entityTypes[e.type];
+// ensureMoverAttr makes sure an entity's type can hold a location reference, so a
+// character or prop that wasn't authored with one can still be positioned.
+function ensureMoverAttr(id, m) {
+  const et = S.def.entityTypes[S.def.entities[id].type];
   et.attributes = et.attributes || {};
   if (!et.attributes[m.moverAttr] || et.attributes[m.moverAttr].type !== 'ref')
     et.attributes[m.moverAttr] = { type: 'ref', refType: m.placeType };
+}
+
+function placeEntity(id, place, m) {
+  ensureMoverAttr(id, m);
+  const e = S.def.entities[id];
   e.attrs = e.attrs || {};
   e.attrs[m.moverAttr] = place;
   touched(); renderMain();
+}
+
+// invEditor edits an entity's starting inventory (item type -> count), used to
+// stock a place with props/items.
+function invEditor(inv) {
+  const items = itemTypeNames();
+  const wrap = h('div', {});
+  const redraw = () => {
+    wrap.innerHTML = '';
+    for (const it of Object.keys(inv)) {
+      const n = h('input', { type: 'number', value: inv[it], style: 'max-width:90px' });
+      n.addEventListener('input', () => { inv[it] = Number(n.value || 0); touched(); });
+      wrap.appendChild(h('div', { class: 'kv-row' }, h('span', { class: 'key', style: 'align-self:center' }, it), n,
+        h('button', { class: 'tiny del', onclick: () => { delete inv[it]; redraw(); touched(); } }, '✕')));
+    }
+    const free = items.filter(x => !(x in inv));
+    if (free.length) {
+      const sb = selectInput({ v: '' }, 'v', free, { emptyLabel: '+ add item…' });
+      sb.addEventListener('change', () => { if (sb.value) { inv[sb.value] = 1; redraw(); touched(); } });
+      wrap.appendChild(h('div', { class: 'field', style: 'margin-top:6px' }, sb));
+    }
+  };
+  redraw();
+  return wrap;
 }
 
 function addExit(from, to, m) {
@@ -1262,11 +1298,10 @@ function sceneCard(id, scenes, m) {
   card.appendChild(h('div', { class: 'field' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = sc.once !== false; c.addEventListener('change', () => { sc.once = c.checked; syncScenes(m); touched(); }); return h('label', { class: 'checkbox' }, c, 'fire once'); })()));
   if (!sc.machine || !sc.state) card.appendChild(h('div', { class: 'hint' }, 'pick a machine + state so the scene has something to fire on'));
 
-  // placements
-  card.appendChild(h('div', { class: 'pt-section-label' }, 'Move the cast'));
+  // placements (characters & props — anything that can hold a location ref)
+  card.appendChild(h('div', { class: 'pt-section-label' }, 'Position characters & props'));
   const placesIds = getPlaces(m).map(p => p.id);
   const placeOpts = getPlaces(m).map(p => ({ value: p.id, label: placeName(p) }));
-  const moverIds = movers(m);
   for (const ent of Object.keys(sc.placements)) {
     card.appendChild(h('div', { class: 'kv-row' },
       h('span', { class: 'key', style: 'align-self:center' }, nameOf(ent)),
@@ -1274,13 +1309,44 @@ function sceneCard(id, scenes, m) {
       selectInput(sc.placements, ent, placeOpts, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }),
       h('button', { class: 'tiny del', onclick: () => { delete sc.placements[ent]; syncScenes(m); touched(); renderMain(); } }, '✕')));
   }
-  const freeMovers = moverIds.filter(id => !(id in sc.placements));
-  if (freeMovers.length && placesIds.length) {
-    const selBox = selectInput({ v: '' }, 'v', freeMovers, { emptyLabel: '+ move a character/object…' });
-    selBox.addEventListener('change', () => { if (selBox.value) { sc.placements[selBox.value] = placesIds[0]; syncScenes(m); touched(); renderMain(); } });
+  const freeCandidates = Object.keys(S.def.entities).filter(id => S.def.entities[id].type !== m.placeType && !(id in sc.placements));
+  if (freeCandidates.length && placesIds.length) {
+    const selBox = selectInput({ v: '' }, 'v', freeCandidates.map(id => ({ value: id, label: nameOf(id) })), { emptyLabel: '+ position a character, prop, or object…' });
+    selBox.addEventListener('change', () => { if (selBox.value) { ensureMoverAttr(selBox.value, m); sc.placements[selBox.value] = placesIds[0]; syncScenes(m); touched(); renderMain(); } });
     card.appendChild(h('div', { class: 'field', style: 'margin-top:6px' }, selBox));
   }
   card.appendChild(h('button', { class: 'tiny', onclick: () => { for (const p of getPlaces(m)) for (const occ of occupantsOf(p.id, m)) sc.placements[occ] = p.id; syncScenes(m); touched(); renderMain(); } }, 'capture current positions'));
+
+  // items: add an item type into an entity's (or place's) inventory
+  card.appendChild(h('div', { class: 'pt-section-label' }, 'Place items'));
+  sc.items = sc.items || [];
+  const itemIds = itemTypeNames();
+  const holderOpts = Object.keys(S.def.entities).map(id => ({ value: id, label: nameOf(id) }));
+  if (!itemIds.length) card.appendChild(h('div', { class: 'hint' }, 'define item types (Types → Item types) to place items'));
+  else {
+    sc.items.forEach((it, i) => {
+      const n = h('input', { type: 'number', value: it.count || 1, style: 'max-width:70px' });
+      n.addEventListener('input', () => { it.count = Number(n.value || 1); syncScenes(m); touched(); });
+      card.appendChild(h('div', { class: 'kv-row' },
+        selectInput(it, 'item', itemIds, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }),
+        h('span', { style: 'align-self:center;color:var(--muted)' }, '→'),
+        selectInput(it, 'holder', holderOpts, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }),
+        n,
+        h('button', { class: 'tiny del', onclick: () => { sc.items.splice(i, 1); syncScenes(m); touched(); renderMain(); } }, '✕')));
+    });
+    card.appendChild(h('button', { class: 'tiny add-btn', onclick: () => { sc.items.push({ item: itemIds[0], holder: Object.keys(S.def.entities)[0], count: 1 }); syncScenes(m); touched(); renderMain(); } }, '+ place an item'));
+  }
+
+  // lore trigger: reveal lore entries when the scene fires
+  card.appendChild(h('div', { class: 'pt-section-label' }, 'Reveal lore (lore trigger)'));
+  sc.lore = sc.lore || [];
+  const loreIds = keys(S.def.lore);
+  if (!loreIds.length) card.appendChild(h('div', { class: 'hint' }, 'no lore yet — add entries in the Lore section'));
+  for (const lid of loreIds) {
+    const cb = h('input', { type: 'checkbox' }); cb.checked = sc.lore.includes(lid);
+    cb.addEventListener('change', () => { if (cb.checked) { if (!sc.lore.includes(lid)) sc.lore.push(lid); } else sc.lore = sc.lore.filter(x => x !== lid); syncScenes(m); touched(); });
+    card.appendChild(h('div', {}, h('label', { class: 'checkbox' }, cb, (S.def.lore[lid].title || lid))));
+  }
 
   // narrative
   card.appendChild(h('div', { class: 'pt-section-label' }, 'On entry (optional)'));
@@ -1293,6 +1359,8 @@ function sceneCard(id, scenes, m) {
 function compileScene(id, sc, m) {
   const effects = [];
   for (const [ent, place] of Object.entries(sc.placements || {})) if (ent && place) effects.push({ op: 'set', target: `entity.${ent}.${m.moverAttr}`, value: place });
+  for (const it of (sc.items || [])) if (it && it.holder && it.item) effects.push({ op: 'add_item', entity: it.holder, item: it.item, count: it.count || 1 });
+  for (const lore of (sc.lore || [])) if (lore) effects.push({ op: 'discover', lore });
   if (sc.markBeat) effects.push({ op: 'mark_beat', beat: sc.markBeat });
   if (sc.record) effects.push({ op: 'record', text: sc.record });
   const when = (sc.machine && sc.state) ? { target: `machine.${sc.machine}.state`, op: 'eq', value: sc.state } : null;
