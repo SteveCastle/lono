@@ -11,7 +11,21 @@ import (
 func computeDerived(def *Definition, st *State, spec DerivedSpec, self string) (any, error) {
 	verb, attr := splitReduce(spec.Reduce)
 
-	// Gather the attribute maps of matching items, and a parallel id for arg*.
+	// Resolve endpoint specifiers to concrete string ids ("" = wildcard).
+	fromWant, err := resolveEndpointSpec(st, def, spec.Where.From, self)
+	if err != nil {
+		return nil, fmt.Errorf("derived where.from: %w", err)
+	}
+	toWant, err := resolveEndpointSpec(st, def, spec.Where.To, self)
+	if err != nil {
+		return nil, fmt.Errorf("derived where.to: %w", err)
+	}
+
+	// "Anchored" = the original spec (before resolution) was non-empty.
+	fromAnchored := !isEmptyEndpoint(spec.Where.From)
+	toAnchored := !isEmptyEndpoint(spec.Where.To)
+
+	// Gather attribute maps of matching items, and parallel ids for arg*/list.
 	var matches []map[string]any
 	var ids []string
 
@@ -21,13 +35,28 @@ func computeDerived(def *Definition, st *State, spec DerivedSpec, self string) (
 			if spec.Where.Type != "" && r.Type != spec.Where.Type {
 				continue
 			}
-			if !endpointMatches(spec.Where.From, r.From, self) || !endpointMatches(spec.Where.To, r.To, self) {
+			if fromWant != "" && r.From != fromWant {
 				continue
 			}
-			if attrsMatch(spec.Where.Attrs, r.Attrs) {
-				matches = append(matches, r.Attrs)
-				ids = append(ids, r.From)
+			if toWant != "" && r.To != toWant {
+				continue
 			}
+			if !attrsMatchWithPath(def, st, spec.Where.Attrs, r.Attrs) {
+				continue
+			}
+			matches = append(matches, r.Attrs)
+			// Counterpart rule: return the endpoint OPPOSITE the anchored one.
+			// to-anchored → return from; from-anchored → return to; neither → from.
+			var counterpart string
+			switch {
+			case toAnchored && !fromAnchored:
+				counterpart = r.From
+			case fromAnchored && !toAnchored:
+				counterpart = r.To
+			default:
+				counterpart = r.From
+			}
+			ids = append(ids, counterpart)
 		}
 	case "entities":
 		// Stable order by id for deterministic arg* results.
@@ -36,10 +65,11 @@ func computeDerived(def *Definition, st *State, spec DerivedSpec, self string) (
 			if spec.Where.Type != "" && e.Type != spec.Where.Type {
 				continue
 			}
-			if attrsMatch(spec.Where.Attrs, e.Attrs) {
-				matches = append(matches, e.Attrs)
-				ids = append(ids, id)
+			if !attrsMatchWithPath(def, st, spec.Where.Attrs, e.Attrs) {
+				continue
 			}
+			matches = append(matches, e.Attrs)
+			ids = append(ids, id)
 		}
 	default:
 		return nil, fmt.Errorf("derived: unknown over %q", spec.Over)
@@ -50,6 +80,12 @@ func computeDerived(def *Definition, st *State, spec DerivedSpec, self string) (
 		return float64(len(matches)), nil
 	case "any":
 		return len(matches) > 0, nil
+	case "list":
+		result := make([]any, len(ids))
+		for i, id := range ids {
+			result[i] = id
+		}
+		return result, nil
 	case "sum":
 		var s float64
 		for _, m := range matches {
@@ -87,6 +123,85 @@ func computeDerived(def *Definition, st *State, spec DerivedSpec, self string) (
 	}
 }
 
+// isEmptyEndpoint reports whether an endpoint spec value is empty/nil/blank.
+func isEmptyEndpoint(v any) bool {
+	if v == nil {
+		return true
+	}
+	if s, ok := v.(string); ok {
+		return s == ""
+	}
+	return false
+}
+
+// resolveEndpointSpec converts a where.from/where.to specifier (any) to a
+// concrete string id, or "" meaning "match anything". Handles:
+//   - nil or ""         → "" (wildcard)
+//   - "$self"           → self
+//   - {"$path":"<p>"}  → resolvePath result as string
+//   - any other string  → literal id
+func resolveEndpointSpec(st *State, def *Definition, spec any, self string) (string, error) {
+	if isEmptyEndpoint(spec) {
+		return "", nil
+	}
+	// $path map form: {"$path":"<p>"}
+	if m, ok := spec.(map[string]any); ok {
+		if p, ok := m["$path"].(string); ok {
+			ctx := &evalCtx{def: def}
+			val, err := resolvePath(st, ctx, p)
+			if err != nil {
+				return "", fmt.Errorf("$path %q: %w", p, err)
+			}
+			s, ok := val.(string)
+			if !ok {
+				return "", fmt.Errorf("$path %q resolved to %T, need string", p, val)
+			}
+			return s, nil
+		}
+		return "", fmt.Errorf("unknown endpoint map form %v", spec)
+	}
+	s, ok := spec.(string)
+	if !ok {
+		return "", fmt.Errorf("endpoint must be a string or {\"$path\":\"…\"}, got %T", spec)
+	}
+	if s == "$self" {
+		return self, nil
+	}
+	return s, nil
+}
+
+// resolvePredValue resolves an AttrPred.Value for comparison: {"$path":"p"}
+// resolves via resolvePath; anything else passes through unchanged.
+func resolvePredValue(def *Definition, st *State, v any) any {
+	if m, ok := v.(map[string]any); ok {
+		if p, ok := m["$path"].(string); ok {
+			ctx := &evalCtx{def: def}
+			val, err := resolvePath(st, ctx, p)
+			if err != nil {
+				return nil
+			}
+			return val
+		}
+	}
+	return v
+}
+
+// attrsMatchWithPath is like attrsMatch but resolves $path in predicate values.
+func attrsMatchWithPath(def *Definition, st *State, preds []AttrPred, attrs map[string]any) bool {
+	for _, p := range preds {
+		left, ok := attrs[p.Attr]
+		if !ok {
+			return false
+		}
+		right := resolvePredValue(def, st, p.Value)
+		match, err := compareValues(left, p.Op, right)
+		if err != nil || !match {
+			return false
+		}
+	}
+	return true
+}
+
 // splitReduce splits "argmax:attraction" into ("argmax","attraction").
 func splitReduce(reduce string) (verb, attr string) {
 	if i := strings.IndexByte(reduce, ':'); i >= 0 {
@@ -97,6 +212,7 @@ func splitReduce(reduce string) (verb, attr string) {
 
 // endpointMatches reports whether a relationship endpoint satisfies a where
 // clause endpoint. "" matches anything; "$self" matches the self id.
+// This legacy function is still used by isSelfDerived checks.
 func endpointMatches(want, actual, self string) bool {
 	switch want {
 	case "":
@@ -110,6 +226,7 @@ func endpointMatches(want, actual, self string) bool {
 
 // attrsMatch reports whether all predicates hold against an attribute map.
 // A missing attribute fails the predicate (no error).
+// This is the legacy version without $path resolution; kept for compatibility.
 func attrsMatch(preds []AttrPred, attrs map[string]any) bool {
 	for _, p := range preds {
 		left, ok := attrs[p.Attr]
@@ -132,8 +249,14 @@ type DerivedView struct {
 	ByEntity map[string]map[string]any `json:"byEntity,omitempty"`
 }
 
+// isSelfDerived reports whether a derived spec should be computed per-entity
+// (i.e. its where clause references "$self" in from or to).
 func isSelfDerived(spec DerivedSpec) bool {
-	return spec.Where.From == "$self" || spec.Where.To == "$self"
+	isStrEq := func(v any, want string) bool {
+		s, ok := v.(string)
+		return ok && s == want
+	}
+	return isStrEq(spec.Where.From, "$self") || isStrEq(spec.Where.To, "$self")
 }
 
 // BuildDerivedView computes every derived value: global ones once, per-entity

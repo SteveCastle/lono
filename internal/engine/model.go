@@ -157,8 +157,8 @@ type DerivedSpec struct {
 // WhereSpec filters the collection a DerivedSpec aggregates over.
 type WhereSpec struct {
 	Type  string     `json:"type,omitempty"` // relationship type, or entity type for over:entities
-	From  string     `json:"from,omitempty"` // relationship endpoint: literal id or "$self"
-	To    string     `json:"to,omitempty"`   // relationship endpoint: literal id or "$self"
+	From  any        `json:"from,omitempty"` // relationship endpoint: literal id, "$self", or {"$path":"<p>"}
+	To    any        `json:"to,omitempty"`   // relationship endpoint: literal id, "$self", or {"$path":"<p>"}
 	Attrs []AttrPred `json:"attrs,omitempty"`
 }
 

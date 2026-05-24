@@ -128,3 +128,146 @@ func TestComputeDerivedMinMaxArg(t *testing.T) {
 	check("min_attr", float64(0))
 	check("least_admirer", "")
 }
+
+// TestDerivedListReducer verifies the new "list" reducer.
+func TestDerivedListReducer(t *testing.T) {
+	def := &Definition{
+		ID: "g", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"alive": {Type: "bool", Default: true},
+				"score": {Type: "int", Default: float64(0)},
+			}},
+		},
+		Derived: map[string]DerivedSpec{
+			"living_list": {Over: "entities", Where: WhereSpec{Type: "character",
+				Attrs: []AttrPred{{Attr: "alive", Op: "eq", Value: true}}},
+				Reduce: "list"},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.Entities["a"] = &Entity{Type: "character", Attrs: map[string]any{"alive": true, "score": float64(1)}, Inventory: map[string]int{}}
+	st.Entities["b"] = &Entity{Type: "character", Attrs: map[string]any{"alive": false, "score": float64(2)}, Inventory: map[string]int{}}
+	st.Entities["c"] = &Entity{Type: "character", Attrs: map[string]any{"alive": true, "score": float64(3)}, Inventory: map[string]int{}}
+
+	got, err := computeDerived(def, st, def.Derived["living_list"], "")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	arr, ok := got.([]any)
+	if !ok {
+		t.Fatalf("list result is %T, want []any", got)
+	}
+	// Entities are iterated in sorted order: a, c (b is dead).
+	if len(arr) != 2 || arr[0] != "a" || arr[1] != "c" {
+		t.Fatalf("list = %v, want [a c]", arr)
+	}
+}
+
+// TestDerivedPathOperandInAttr tests $path resolution in attr-predicate values.
+func TestDerivedPathOperandInAttr(t *testing.T) {
+	def := &Definition{
+		ID: "g", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"person": {Attributes: map[string]VarSpec{
+				"location": {Type: "string"},
+			}},
+		},
+		Derived: map[string]DerivedSpec{
+			"here": {
+				Over: "entities",
+				Where: WhereSpec{
+					Type: "person",
+					Attrs: []AttrPred{{
+						Attr:  "location",
+						Op:    "eq",
+						Value: map[string]any{"$path": "entity.player.location"},
+					}},
+				},
+				Reduce: "list",
+			},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.Entities["player"] = &Entity{Type: "person", Attrs: map[string]any{"location": "study"}, Inventory: map[string]int{}}
+	st.Entities["npc"] = &Entity{Type: "person", Attrs: map[string]any{"location": "study"}, Inventory: map[string]int{}}
+	st.Entities["other"] = &Entity{Type: "person", Attrs: map[string]any{"location": "hall"}, Inventory: map[string]int{}}
+
+	got, err := computeDerived(def, st, def.Derived["here"], "")
+	if err != nil {
+		t.Fatalf("here: %v", err)
+	}
+	arr, ok := got.([]any)
+	if !ok {
+		t.Fatalf("here result is %T, want []any", got)
+	}
+	// player and npc are at study; sorted → [npc, player].
+	if len(arr) != 2 {
+		t.Fatalf("here = %v, want 2 entries", arr)
+	}
+	if arr[0] != "npc" || arr[1] != "player" {
+		t.Fatalf("here = %v, want [npc player]", arr)
+	}
+}
+
+// TestDerivedExitsFrom tests from-anchored counterpart rule: from:$path → return to.
+func TestDerivedExitsFrom(t *testing.T) {
+	def := &Definition{
+		ID: "g", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"location": {Attributes: map[string]VarSpec{"name": {Type: "string"}}},
+			"person":   {Attributes: map[string]VarSpec{"location": {Type: "string"}}},
+		},
+		RelationshipTypes: map[string]RelType{
+			"exit": {From: "location", To: "location", Directed: true},
+		},
+		Derived: map[string]DerivedSpec{
+			"exits_here": {
+				Over: "relationships",
+				Where: WhereSpec{
+					Type: "exit",
+					From: map[string]any{"$path": "entity.player.location"},
+				},
+				Reduce: "list",
+			},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.Entities["study"] = &Entity{Type: "location", Attrs: map[string]any{"name": "Study"}, Inventory: map[string]int{}}
+	st.Entities["hall"] = &Entity{Type: "location", Attrs: map[string]any{"name": "Hall"}, Inventory: map[string]int{}}
+	st.Entities["garden"] = &Entity{Type: "location", Attrs: map[string]any{"name": "Garden"}, Inventory: map[string]int{}}
+	st.Entities["player"] = &Entity{Type: "person", Attrs: map[string]any{"location": "study"}, Inventory: map[string]int{}}
+	st.Relationships = []*Relationship{
+		{Type: "exit", From: "study", To: "hall", Attrs: map[string]any{}},
+		{Type: "exit", From: "hall", To: "study", Attrs: map[string]any{}},
+		{Type: "exit", From: "hall", To: "garden", Attrs: map[string]any{}},
+		{Type: "exit", From: "garden", To: "hall", Attrs: map[string]any{}},
+	}
+
+	// exits_here: from=player.location(="study") → counterpart = To → returns ["hall"]
+	got, err := computeDerived(def, st, def.Derived["exits_here"], "")
+	if err != nil {
+		t.Fatalf("exits_here from study: %v", err)
+	}
+	arr, ok := got.([]any)
+	if !ok {
+		t.Fatalf("exits_here result is %T, want []any", got)
+	}
+	if len(arr) != 1 || arr[0] != "hall" {
+		t.Fatalf("exits_here from study = %v, want [hall]", arr)
+	}
+}
+
+// TestDerivedToAnchoredArgmaxStillReturnsFrom verifies the v3 counterpart rule:
+// to-anchored → return from (existing behaviour kept green).
+func TestDerivedToAnchoredArgmaxStillReturnsFrom(t *testing.T) {
+	def, st := socialState()
+	// top_admirer has To:"player" (to-anchored) → argmax should return From id.
+	got, err := computeDerived(def, st, def.Derived["top_admirer"], "")
+	if err != nil {
+		t.Fatalf("top_admirer: %v", err)
+	}
+	if got != "aria" {
+		t.Fatalf("top_admirer = %v, want aria (to-anchored should return from)", got)
+	}
+}

@@ -314,7 +314,7 @@ func validateSpec(path string, spec VarSpec) []ValidationError {
 func validReduce(reduce string) bool {
 	verb, attr := splitReduce(reduce)
 	switch verb {
-	case "count", "any":
+	case "count", "any", "list":
 		return attr == ""
 	case "sum", "min", "max", "argmax", "argmin":
 		return attr != ""
