@@ -1,0 +1,10 @@
+# Built binaries
+/lono
+/lono.exe
+
+# Local data dirs created at runtime
+/.lono/
+/scratch/
+
+# Design specs/plans — kept locally, not committed
+docs/superpowers/

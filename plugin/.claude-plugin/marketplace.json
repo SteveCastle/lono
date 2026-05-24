@@ -1,0 +1,15 @@
+{
+  "name": "lono-marketplace",
+  "owner": {
+    "name": "Callsign Media",
+    "email": "stephen@callsignmedia.com"
+  },
+  "description": "The lono storytelling game engine plugin.",
+  "plugins": [
+    {
+      "name": "lono",
+      "source": "./lono",
+      "description": "Collaboratively build and run story-driven, relationship-driven games with the lono state engine."
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "id": "heist",
+  "name": "The Midnight Heist",
+  "version": 1,
+  "world": {
+    "alarm": {"type": "bool", "default": false},
+    "loot":  {"type": "int", "default": 0, "min": 0}
+  },
+  "entityTypes": {
+    "character": {"attributes": {
+      "name":     {"type": "string"},
+      "health":   {"type": "int", "default": 100, "min": 0, "max": 100},
+      "location": {"type": "ref", "refType": "location"}
+    }},
+    "location": {"attributes": {
+      "name":   {"type": "string"},
+      "locked": {"type": "bool", "default": false}
+    }}
+  },
+  "itemTypes": {"gold": {}, "lockpick": {"maxStack": 5}},
+  "relationshipTypes": {
+    "trust": {"from": "character", "to": "character", "directed": true,
+      "attributes": {"value": {"type": "int", "default": 0, "min": -100, "max": 100}}}
+  },
+  "machines": {
+    "arc": {
+      "initial": "outside",
+      "states": ["outside", "inside", "escaped"],
+      "transitions": [
+        {"id": "break_in", "from": "outside", "to": "inside",
+         "guard": {"target": "inventory.player.lockpick", "op": "gt", "value": 0},
+         "effects": [
+           {"op": "remove_item", "entity": "player", "item": "lockpick", "count": 1},
+           {"op": "set", "target": "entity.player.location", "value": "vault"}
+         ]},
+        {"id": "grab_loot", "from": "inside", "to": "inside",
+         "params": {"bags": {"type": "int", "min": 1}},
+         "guard": {"target": "param.bags", "op": "gte", "value": 1},
+         "effects": [
+           {"op": "roll", "dice": "1d6", "store": "x"},
+           {"op": "inc", "target": "world.loot", "value": {"$roll": "x"}}
+         ]},
+        {"id": "escape", "from": "inside", "to": "escaped",
+         "guard": {"target": "world.loot", "op": "gt", "value": 0},
+         "effects": [
+           {"op": "adjust_relationship", "relType": "trust", "from": "aria", "to": "player", "attr": "value", "by": 5}
+         ]}
+      ]
+    }
+  },
+  "setup": [
+    {"op": "create_entity", "entityType": "location",  "id": "vault",  "attrs": {"name": "The Vault"}},
+    {"op": "create_entity", "entityType": "character", "id": "player", "attrs": {"name": "Vex"}},
+    {"op": "create_entity", "entityType": "character", "id": "aria",   "attrs": {"name": "Aria"}},
+    {"op": "add_item", "entity": "player", "item": "lockpick", "count": 2},
+    {"op": "set_relationship", "relType": "trust", "from": "aria", "to": "player", "attrs": {"value": 0}}
+  ]
+}

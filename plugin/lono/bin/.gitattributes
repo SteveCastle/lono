@@ -1,0 +1,4 @@
+# Bundled engine binaries: treat as binary, never CRLF-convert.
+lono-* binary
+# The POSIX wrapper must keep LF line endings to run under Git Bash.
+lono text eol=lf

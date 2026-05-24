@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Wrapper that selects the right prebuilt lono binary for this OS/arch.
+# bin/ is added to the Bash tool PATH while the plugin is enabled, so skills
+# (and you) can just run `lono ...`.
+set -e
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+os="$(uname -s)"
+arch="$(uname -m)"
+case "$arch" in
+  x86_64|amd64) arch=amd64 ;;
+  arm64|aarch64) arch=arm64 ;;
+esac
+
+case "$os" in
+  Darwin)               bin="$DIR/lono-darwin-$arch" ;;
+  Linux)                bin="$DIR/lono-linux-$arch" ;;
+  MINGW*|MSYS*|CYGWIN*) bin="$DIR/lono-windows-amd64.exe" ;;
+  *) echo "lono: unsupported OS '$os'" >&2; exit 1 ;;
+esac
+
+if [ ! -f "$bin" ]; then
+  echo "lono: no bundled binary for $os/$arch (looked for $bin)" >&2
+  exit 1
+fi
+chmod +x "$bin" 2>/dev/null || true
+exec "$bin" "$@"

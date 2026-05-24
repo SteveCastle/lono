@@ -1,0 +1,65 @@
+{
+  "id": "dating",
+  "name": "A Night at the Gallery",
+  "version": 1,
+  "description": "A short dating-sim vignette.",
+  "world": {"day": {"type": "int", "default": 1, "min": 1}},
+  "entityTypes": {
+    "character": {
+      "attributes": {"name": {"type": "string"}},
+      "slots": {"torso": {"accepts": ["dress", "suit"]}}
+    }
+  },
+  "itemTypes": {
+    "gallery_suit": {"category": "suit", "equippable": true, "attributes": {"style": 7}}
+  },
+  "relationshipTypes": {
+    "romance": {"from": "character", "to": "character", "directed": true,
+      "attributes": {"affection": {"type": "int", "default": 0, "min": -100, "max": 100}}}
+  },
+  "derived": {
+    "player_admirers": {"over": "relationships",
+      "where": {"type": "romance", "to": "player", "attrs": [{"attr": "affection", "op": "gte", "value": 50}]},
+      "reduce": "count"}
+  },
+  "machines": {
+    "arc": {
+      "initial": "arrive", "states": ["arrive", "mingle", "ending_together", "ending_alone"],
+      "stateMeta": {
+        "ending_together": {"terminal": true, "ending": true, "description": "You leave with Aria."},
+        "ending_alone": {"terminal": true, "ending": true, "description": "You leave alone."}
+      },
+      "transitions": [
+        {"id": "enter", "from": "arrive", "to": "mingle",
+         "guard": {"target": "equipped.player.torso", "op": "ne", "value": ""},
+         "description": "You step into the gallery, dressed for the evening."},
+        {"id": "leave_together", "from": "mingle", "to": "ending_together",
+         "guard": {"target": "derived.player_admirers", "op": "gte", "value": 1},
+         "intent": "at least one admirer is smitten"},
+        {"id": "leave_alone", "from": "mingle", "to": "ending_alone"}
+      ]
+    },
+    "romance_stage": {
+      "attach": {"to": "relationshipType:romance"},
+      "initial": "acquaintances", "states": ["acquaintances", "flirting", "smitten"],
+      "transitions": [
+        {"id": "flirt", "from": "acquaintances", "to": "flirting",
+         "effects": [{"op": "inc", "target": "this.affection", "value": 30}]},
+        {"id": "charm", "from": "flirting", "to": "smitten",
+         "guard": {"target": "this.affection", "op": "gte", "value": 30},
+         "effects": [{"op": "inc", "target": "this.affection", "value": 30}]}
+      ]
+    }
+  },
+  "beats": {
+    "arrival": {"text": "The gallery hums with quiet conversation.",
+      "machineState": {"machine": "arc", "state": "arrive"}, "once": true},
+    "smitten_beat": {"text": "Aria can't take her eyes off you.",
+      "guard": {"target": "rel.romance.aria.player.affection", "op": "gte", "value": 50}}
+  },
+  "setup": [
+    {"op": "create_entity", "entityType": "character", "id": "player", "attrs": {"name": "You"}},
+    {"op": "create_entity", "entityType": "character", "id": "aria", "attrs": {"name": "Aria"}},
+    {"op": "set_relationship", "relType": "romance", "from": "aria", "to": "player", "attrs": {"affection": 0}}
+  ]
+}
