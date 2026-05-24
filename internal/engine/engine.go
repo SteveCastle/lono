@@ -7,7 +7,9 @@ import (
 )
 
 type ActionResult struct {
-	Rolls []RollResult `json:"rolls,omitempty"`
+	Rolls    []RollResult `json:"rolls,omitempty"`
+	Fired    []string     `json:"fired,omitempty"`
+	Warnings []string     `json:"warnings,omitempty"`
 }
 
 // StartInstance creates a new instance, seeds the first-class cast, and then
@@ -153,13 +155,14 @@ func PerformAction(def *Definition, st *State, machine, action string, params ma
 		}
 	}
 	work.Machines[machine] = tr.To
+	sr := Settle(def, work, ctx)
 	work.RNGState = ctx.rng.state
 	work.UpdatedAt = time.Now().UTC()
 	work.History = append(work.History, HistoryEntry{
 		Seq: len(work.History) + 1, TS: work.UpdatedAt, Kind: "action",
 		Machine: machine, Action: action, Params: params, Rolls: ctx.record,
 	})
-	return work, &ActionResult{Rolls: ctx.record}, nil
+	return work, &ActionResult{Rolls: ctx.record, Fired: sr.Fired, Warnings: sr.Warnings}, nil
 }
 
 // HostRef identifies the host instance for an attached-machine action.
@@ -233,13 +236,14 @@ func PerformHostAction(def *Definition, st *State, machine, action string, param
 	} else {
 		hostCtx.rel.Machines[machine] = tr.To
 	}
+	sr := Settle(def, work, ctx)
 	work.RNGState = ctx.rng.state
 	work.UpdatedAt = time.Now().UTC()
 	work.History = append(work.History, HistoryEntry{
 		Seq: len(work.History) + 1, TS: work.UpdatedAt, Kind: "action",
 		Machine: machine, Action: action, Params: params, Rolls: ctx.record,
 	})
-	return work, &ActionResult{Rolls: ctx.record}, nil
+	return work, &ActionResult{Rolls: ctx.record, Fired: sr.Fired, Warnings: sr.Warnings}, nil
 }
 
 // transitionFrom finds a transition by id whose From matches the current state.
@@ -263,10 +267,11 @@ func ApplyOps(def *Definition, st *State, ops []Effect) (*State, *ActionResult, 
 			return nil, nil, fmt.Errorf("op %d (%s): %w", i, e.Op, err)
 		}
 	}
+	sr := Settle(def, work, ctx)
 	work.RNGState = ctx.rng.state
 	work.UpdatedAt = time.Now().UTC()
 	work.History = append(work.History, HistoryEntry{
 		Seq: len(work.History) + 1, TS: work.UpdatedAt, Kind: "apply", Rolls: ctx.record,
 	})
-	return work, &ActionResult{Rolls: ctx.record}, nil
+	return work, &ActionResult{Rolls: ctx.record, Fired: sr.Fired, Warnings: sr.Warnings}, nil
 }
