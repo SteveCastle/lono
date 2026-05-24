@@ -53,6 +53,8 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		return nil
 	case "compute":
 		return computeOp(def, st, ctx, e)
+	case "if":
+		return ifOp(def, st, ctx, e)
 	case "add_to":
 		return setAddOp(def, st, ctx, e)
 	case "remove_from":
@@ -62,6 +64,24 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 	default:
 		return fmt.Errorf("unknown effect op %q", e.Op)
 	}
+}
+
+// ifOp evaluates e.When; applies e.Then on true else e.Else. Nestable.
+func ifOp(def *Definition, st *State, ctx *evalCtx, e Effect) error {
+	ok, err := evalGuard(st, ctx, e.When)
+	if err != nil {
+		return fmt.Errorf("if guard: %w", err)
+	}
+	branch := e.Else
+	if ok {
+		branch = e.Then
+	}
+	for _, sub := range branch {
+		if err := applyEffect(def, st, ctx, sub); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // computeOp evaluates target = A <fn> B where fn ∈ add|sub|mul|div|min|max|mod.

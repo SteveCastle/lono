@@ -732,3 +732,169 @@ func TestComputeUnknownFnError(t *testing.T) {
 		t.Fatal("expected unknown fn error")
 	}
 }
+
+// B3: if effect
+
+func defForIfEffect() *Definition {
+	lo, hi := 0.0, 100.0
+	return &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"day":    {Type: "int", Default: float64(1)},
+			"missed": {Type: "bool", Default: false},
+			"score":  {Type: "int", Default: float64(0), Min: &lo, Max: &hi},
+		},
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"health":   {Type: "int", Default: float64(100), Min: &lo, Max: &hi},
+				"strength": {Type: "int", Default: float64(10), Min: &lo, Max: &hi},
+			}},
+		},
+	}
+}
+
+func TestIfThenBranch(t *testing.T) {
+	def := defForIfEffect()
+	st, _ := NewInstance(def, "r", 1)
+	st.World["day"] = float64(5)
+	ctx := newEvalCtx(nil, nil)
+
+	// if world.day gte 3 then set world.missed=true else set world.score=99
+	e := Effect{
+		Op:   "if",
+		When: &Guard{Target: "world.day", Op: "gte", Value: float64(3)},
+		Then: []Effect{{Op: "set", Target: "world.missed", Value: true}},
+		Else: []Effect{{Op: "set", Target: "world.score", Value: float64(99)}},
+	}
+	if err := applyEffect(def, st, ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	if st.World["missed"] != true {
+		t.Fatal("then-branch should have set missed=true")
+	}
+	if st.World["score"] != float64(0) {
+		t.Fatal("else-branch must not have run")
+	}
+}
+
+func TestIfElseBranch(t *testing.T) {
+	def := defForIfEffect()
+	st, _ := NewInstance(def, "r", 1)
+	st.World["day"] = float64(1)
+	ctx := newEvalCtx(nil, nil)
+
+	// if world.day gte 3 then set missed=true else set score=42
+	e := Effect{
+		Op:   "if",
+		When: &Guard{Target: "world.day", Op: "gte", Value: float64(3)},
+		Then: []Effect{{Op: "set", Target: "world.missed", Value: true}},
+		Else: []Effect{{Op: "set", Target: "world.score", Value: float64(42)}},
+	}
+	if err := applyEffect(def, st, ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	if st.World["missed"] != false {
+		t.Fatal("then-branch must not have run")
+	}
+	if st.World["score"] != float64(42) {
+		t.Fatal("else-branch should have set score=42")
+	}
+}
+
+func TestIfNested(t *testing.T) {
+	def := defForIfEffect()
+	st, _ := NewInstance(def, "r", 1)
+	st.World["day"] = float64(5)
+	ctx := newEvalCtx(nil, nil)
+
+	// outer: day gte 3 -> then [inner: day gte 10 -> then score=99 else score=50]
+	inner := Effect{
+		Op:   "if",
+		When: &Guard{Target: "world.day", Op: "gte", Value: float64(10)},
+		Then: []Effect{{Op: "set", Target: "world.score", Value: float64(99)}},
+		Else: []Effect{{Op: "set", Target: "world.score", Value: float64(50)}},
+	}
+	outer := Effect{
+		Op:   "if",
+		When: &Guard{Target: "world.day", Op: "gte", Value: float64(3)},
+		Then: []Effect{inner},
+		Else: []Effect{{Op: "set", Target: "world.missed", Value: true}},
+	}
+	if err := applyEffect(def, st, ctx, outer); err != nil {
+		t.Fatal(err)
+	}
+	// day=5: outer then fires, inner else fires (day not gte 10) -> score=50
+	if st.World["score"] != float64(50) {
+		t.Fatalf("nested if: got score=%v want 50", st.World["score"])
+	}
+	if st.World["missed"] != false {
+		t.Fatal("outer else must not have run")
+	}
+}
+
+func TestIfRollDrivenSkillCheck(t *testing.T) {
+	// End-to-end: roll 1d20 store "atk"; if roll.atk gte 12 then compute goblin.health -=roll else set world.missed=true
+	// Use a seeded RNG so the outcome is deterministic.
+	lo, hi := 0.0, 200.0
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"missed": {Type: "bool", Default: false},
+		},
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"health": {Type: "int", Default: float64(100), Min: &lo, Max: &hi},
+			}},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.Entities["goblin"] = &Entity{Type: "character", Attrs: map[string]any{"health": float64(100)}, Inventory: map[string]int{}}
+
+	// RNG seed=1: determine what 1d20 rolls.
+	rng := &RNG{state: 1}
+	rolled, _ := rng.RollDice("1d20")
+	expectedHit := float64(rolled) >= 12
+
+	// Reset rng to same seed.
+	rng2 := &RNG{state: 1}
+	ctx := newEvalCtx(nil, rng2)
+
+	effects := []Effect{
+		{Op: "roll", Dice: "1d20", Store: "atk"},
+		{
+			Op:   "if",
+			When: &Guard{Target: "roll.atk", Op: "gte", Value: float64(12)},
+			Then: []Effect{{
+				Op:     "compute",
+				Target: "entity.goblin.health",
+				Fn:     "sub",
+				A:      map[string]any{"$path": "entity.goblin.health"},
+				B:      map[string]any{"$roll": "atk"},
+			}},
+			Else: []Effect{{Op: "set", Target: "world.missed", Value: true}},
+		},
+	}
+
+	for _, e := range effects {
+		if err := applyEffect(def, st, ctx, e); err != nil {
+			t.Fatalf("effect %q: %v", e.Op, err)
+		}
+	}
+
+	if expectedHit {
+		expectedHealth := float64(100) - float64(rolled)
+		if st.Entities["goblin"].Attrs["health"] != expectedHealth {
+			t.Fatalf("hit: goblin health = %v, want %v", st.Entities["goblin"].Attrs["health"], expectedHealth)
+		}
+		if st.World["missed"] != false {
+			t.Fatal("hit: missed should remain false")
+		}
+	} else {
+		if st.World["missed"] != true {
+			t.Fatal("miss: missed should be true")
+		}
+		if st.Entities["goblin"].Attrs["health"] != float64(100) {
+			t.Fatal("miss: goblin health should be unchanged")
+		}
+	}
+}
