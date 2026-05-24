@@ -210,37 +210,6 @@ func splitReduce(reduce string) (verb, attr string) {
 	return reduce, ""
 }
 
-// endpointMatches reports whether a relationship endpoint satisfies a where
-// clause endpoint. "" matches anything; "$self" matches the self id.
-// This legacy function is still used by isSelfDerived checks.
-func endpointMatches(want, actual, self string) bool {
-	switch want {
-	case "":
-		return true
-	case "$self":
-		return actual == self
-	default:
-		return actual == want
-	}
-}
-
-// attrsMatch reports whether all predicates hold against an attribute map.
-// A missing attribute fails the predicate (no error).
-// This is the legacy version without $path resolution; kept for compatibility.
-func attrsMatch(preds []AttrPred, attrs map[string]any) bool {
-	for _, p := range preds {
-		left, ok := attrs[p.Attr]
-		if !ok {
-			return false
-		}
-		match, err := compareValues(left, p.Op, p.Value)
-		if err != nil || !match {
-			return false
-		}
-	}
-	return true
-}
-
 // DerivedView holds computed derived values for the CLI state output: global
 // values, and per-entity values (those whose where references $self) keyed by
 // entity id.
