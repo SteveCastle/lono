@@ -9,8 +9,9 @@ import (
 )
 
 // stateData builds the canonical {state, actions} payload for the LLM.
-// clock is always included as a top-level key. Callers may pass additional
-// keys via extra (e.g. rolls, fired, warnings).
+// clock is always included as a top-level key. A convenience "log" key holds
+// the most recent 10 journal entries so callers see them without navigating
+// into state. Callers may pass additional keys via extra (e.g. rolls, fired, warnings).
 func stateData(def *engine.Definition, st *engine.State, extra map[string]any) (map[string]any, error) {
 	actions, err := engine.AvailableActions(def, st)
 	if err != nil {
@@ -23,11 +24,20 @@ func stateData(def *engine.Definition, st *engine.State, extra map[string]any) (
 		"beats":         engine.ActiveBeats(def, st),
 		"endingReached": engine.EndingsReached(def, st),
 		"clock":         st.Clock,
+		"log":           lastNLog(st.Log, 10),
 	}
 	for k, v := range extra {
 		out[k] = v
 	}
 	return out, nil
+}
+
+// lastNLog returns the last n entries of log, or all entries if len(log) <= n.
+func lastNLog(log []engine.LogEntry, n int) []engine.LogEntry {
+	if len(log) <= n {
+		return log
+	}
+	return log[len(log)-n:]
 }
 
 // loadDefForInstance loads the instance state and its game definition together.
