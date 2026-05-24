@@ -41,5 +41,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(a.newRmCmd())
 	root.AddCommand(a.newAdvanceCmd())
 	root.AddCommand(a.newLoreCmd())
+	root.AddCommand(a.newEditCmd())
 	return root
 }

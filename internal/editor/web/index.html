@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>lono studio</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand">lono <span>studio</span></div>
+      <div class="file-controls">
+        <select id="file-select" title="Open a game file"></select>
+        <button id="btn-new" title="New game">New</button>
+        <button id="btn-delete" title="Delete this file">Delete</button>
+      </div>
+      <div class="spacer"></div>
+      <div id="valid-pill" class="pill" title="Validation status">—</div>
+      <button id="btn-save" class="primary" disabled>Save</button>
+      <button id="btn-playtest">▶ Playtest</button>
+    </header>
+
+    <div id="body">
+      <nav id="sidebar"></nav>
+      <main id="main"></main>
+    </div>
+
+    <aside id="playtest-panel" class="hidden"></aside>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
