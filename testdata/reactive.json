@@ -1,0 +1,109 @@
+{
+  "id": "reactive",
+  "name": "The Vault",
+  "version": 1,
+  "description": "A heist exercising all v3 reactive features: sets, compute, $path, if/then/else, roll.<store>, triggers, schedule, cooldown, record, len.<path>.",
+  "world": {
+    "alarm":    {"type": "bool", "default": false},
+    "loot":     {"type": "int",  "default": 0, "min": 0},
+    "attempts": {"type": "int",  "default": 0, "min": 0}
+  },
+  "entityTypes": {
+    "agent": {
+      "attributes": {
+        "name":     {"type": "string"},
+        "health":   {"type": "int", "default": 100, "min": 0, "max": 100},
+        "strength": {"type": "int", "default": 5},
+        "clues":    {"type": "set", "elem": "string"}
+      }
+    }
+  },
+  "machines": {
+    "arc": {
+      "initial": "outside",
+      "states":  ["outside", "inside", "escaped", "caught"],
+      "stateMeta": {
+        "escaped": {"terminal": true, "ending": true, "description": "You vanish into the night with the loot."},
+        "caught":  {"terminal": true, "ending": true, "description": "The guards close in. Game over."}
+      },
+      "transitions": [
+        {
+          "id":   "break_in",
+          "from": "outside",
+          "to":   "inside",
+          "effects": [
+            {"op": "record", "text": "You slip through the service entrance.", "tags": ["entry"]}
+          ]
+        },
+        {
+          "id":   "crack_safe",
+          "from": "inside",
+          "to":   "inside",
+          "guard": {"target": "cooldown.crack", "op": "eq", "value": 0},
+          "effects": [
+            {"op": "cooldown", "key": "crack", "ticks": 3},
+            {"op": "compute",
+             "target": "world.attempts",
+             "fn": "add",
+             "a": {"$path": "world.attempts"},
+             "b": 1},
+            {"op": "roll", "dice": "1d20", "store": "r"},
+            {"op": "if",
+             "when": {"target": "roll.r", "op": "gte", "value": 10},
+             "then": [
+               {"op": "inc",    "target": "world.loot", "value": 5},
+               {"op": "record", "text": "You crack the safe.", "tags": ["loot"]}
+             ],
+             "else": [
+               {"op": "set",    "target": "world.alarm", "value": true},
+               {"op": "record", "text": "The safe alarm blares.", "tags": ["alarm"]}
+             ]}
+          ]
+        },
+        {
+          "id":   "grab_clue",
+          "from": "inside",
+          "to":   "inside",
+          "effects": [
+            {"op": "add_to",  "target": "entity.player.clues", "value": "ledger"},
+            {"op": "record",  "text": "You pocket the ledger.", "tags": ["clue"]}
+          ]
+        },
+        {
+          "id":   "escape",
+          "from": "inside",
+          "to":   "escaped",
+          "guard": {
+            "and": [
+              {"target": "world.loot",                    "op": "gt",       "value": 0},
+              {"target": "entity.player.clues",           "op": "contains", "value": "ledger"},
+              {"target": "len.entity.player.clues",       "op": "gte",      "value": 1}
+            ]
+          },
+          "effects": [
+            {"op": "record", "text": "You escape into the night.", "tags": ["escape"]}
+          ]
+        }
+      ]
+    }
+  },
+  "triggers": {
+    "on_alarm": {
+      "when": {"target": "world.alarm", "op": "eq", "value": true},
+      "once": true,
+      "effects": [
+        {"op": "schedule", "in": 2, "do": [
+          {"op": "set_machine_state", "machine": "arc", "state": "caught"}
+        ]},
+        {"op": "record", "text": "Guards mobilize — 2 turns to escape.", "tags": ["alarm"]}
+      ],
+      "intent": "alarm schedules capture in 2 ticks"
+    }
+  },
+  "entities": {
+    "player": {
+      "type":  "agent",
+      "attrs": {"name": "Vex"}
+    }
+  }
+}
