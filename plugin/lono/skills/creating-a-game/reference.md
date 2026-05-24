@@ -25,6 +25,7 @@ lono define scene             set|rm <game> <machine> <state> --spec '<StateMeta
 lono define branch            set|rm <game> <machine> --spec '<Transition>'  # alias: transition; id is in the spec
 lono define derived           set|rm <game> <name> --spec '<DerivedSpec>'
 lono define event             set|rm <game> <name> --spec '<Beat>'           # alias: beat
+lono define trigger           set|rm <game> <name> --spec '<Trigger>'       # reactive rule (fires automatically)
 lono define <kind>            rm  <game> <name>     # branch/transition: rm <game> <machine> <transitionId>
 ```
 
@@ -116,9 +117,14 @@ Used for world vars, entity/relationship attributes, and action params.
 {"type": "string","default": ""}
 {"type": "enum",  "values": ["sun","rain","storm"], "default": "sun"}
 {"type": "ref",   "refType": "location"}        // points to an entity of that type
+{"type": "set",   "elem": "string"}             // a set of unique strings, default []
+{"type": "set",   "elem": "ref", "refType": "character"}  // a set of entity ids
 ```
 Numbers are JSON numbers. `int` rejects non-whole values. `enum` default must be
-a listed value. `ref` value is an entity id (validated to exist).
+a listed value. `ref` value is an entity id (validated to exist). A `set` is
+stored as a JSON array with unique membership (default `[]`); for `elem:"ref"`
+each member must be an existing entity. Mutate sets with `add_to`/`remove_from`/
+`clear`, test with the `contains` guard, and size with `len.<path>`.
 
 ## Definition shape (what `game import` accepts)
 
@@ -231,10 +237,12 @@ attached machine (use a guard on `rel.*`/`entity.*` instead).
 A guard is a tree. Leaf: `{"target":<path>,"op":<op>,"value":<v>}`. Combinators:
 `{"and":[...]}`, `{"or":[...]}`, `{"not":{...}}`. A missing guard is always true.
 
-Leaf ops: `eq ne gt gte lt lte in exists`.
+Leaf ops: `eq ne gt gte lt lte in exists contains`.
 - `in`: value is a list; true if target ∈ list.
 - `exists`: true if the path refers to something present (entity/relationship
   present; inventory/equipped slot non-empty/non-zero). Use `gt 0` for "has item".
+- `contains`: target is a `set` path; true if the set contains `value`, e.g.
+  `{"target":"entity.player.party","op":"contains","value":"aria"}`.
 
 ## Dotted paths (read in guards, derived, and effect targets)
 
@@ -250,6 +258,10 @@ Leaf ops: `eq ne gt gte lt lte in exists`.
 | `rel.<type>.<from>.<to>.<attr>` | a relationship attribute |
 | `machine.<name>.state` | a global machine's current state |
 | `derived.<name>` | a global derived value |
+| `len.<path>` | the length of the set/array at `<path>` (e.g. `len.entity.player.clues`) |
+| `clock` | the instance clock — an integer tick advanced by `advance` |
+| `roll.<store>` | a roll stored earlier this action (readable in guards for skill checks) |
+| `cooldown.<key>` | ticks remaining on a cooldown, `max(0, due-clock)`; `0` = ready |
 | `param.<name>` | an action parameter (inside that action only) |
 | `this.<attr>` / `this.from[.attr]` / `this.to[.attr]` / `this.id` / `this.inventory.<item>` / `this.equipped.<slot>` / `this.machine.<name>` | the host of an attached-machine transition |
 
@@ -260,7 +272,18 @@ Scalar (target is `world.<v>`, `entity.<id>.<attr>`, or `this.<attr>`; bounds en
 {"op":"set","target":"world.alarm","value":true}
 {"op":"inc","target":"entity.player.health","value":10}     // also dec, mul
 {"op":"set","target":"entity.player.health","value":{"$roll":"dmg"}}  // use a roll result
+{"op":"inc","target":"world.gold","value":{"$path":"world.day"}}      // value from a path
 ```
+Any operand (a `set`/`inc`/`dec`/`mul` value, or a `compute` operand) may be a
+literal, `{"$roll":"<store>"}` (a roll result), or `{"$path":"<path>"}` (the
+current value at a path).
+
+Collections (target is a `set` path): `{"op":"add_to","target":"entity.player.clues","value":"ledger"}` (no-op if present) · `{"op":"remove_from","target":"entity.player.party","value":"aria"}` (no-op if absent) · `{"op":"clear","target":"entity.player.clues"}`.
+Compute: `{"op":"compute","target":"entity.goblin.health","fn":"sub","a":{"$path":"entity.goblin.health"},"b":{"$path":"entity.player.strength"}}` — sets `target = a fn b`, `fn ∈ add|sub|mul|div|min|max|mod` (result bounds-checked against the target).
+Conditional: `{"op":"if","when":<Guard>,"then":[…],"else":[…]}` — applies `then` or `else` (each a normal effect list; `else` optional; nestable).
+Schedule (delayed effects / deadlines): `{"op":"schedule","in":N,"do":[…]}` — enqueues the effects to run `N` ticks from now (fired by `advance`).
+Cooldown: `{"op":"cooldown","key":"confess","ticks":2}` — gates re-use; pair with a guard `{"target":"cooldown.confess","op":"eq","value":0}`.
+Journal: `{"op":"record","text":"Aria forgave you.","tags":["aria"]}` — appends a narrative entry (see Narrative journal).
 Inventory: `{"op":"add_item","entity":"player","item":"gold","count":50}` (also `remove_item`; respects `maxStack` / non-negative).
 Entities: `{"op":"create_entity","entityType":"character","id":"aria","attrs":{"name":"Aria"}}` · `{"op":"destroy_entity","id":"aria"}`.
 Relationships: `{"op":"set_relationship","relType":"romance","from":"aria","to":"player","attrs":{"affection":0}}` · `{"op":"adjust_relationship",...,"attr":"affection","by":5}` · `{"op":"remove_relationship",...}`.
@@ -310,6 +333,67 @@ machines only; optional), its `guard` holds (optional; may reference derived),
 and — if `once` (the default) — it hasn't been delivered. The runtime lists
 active beats; deliver one with the `mark_beat` op so once-beats stop repeating.
 Set `"once": false` for ambient/repeatable beats.
+
+## Reactive rules (triggers) & time
+
+A **trigger** is a rule the engine fires **automatically** — you don't invoke it.
+Define them on the game with `define trigger set <game> <name> --spec '<Trigger>'`:
+
+```json
+{"when":{"target":"world.alarm","op":"eq","value":true},
+ "effects":[{"op":"set","target":"entity.guard.hostile","value":true},
+            {"op":"schedule","in":3,"do":[{"op":"set_machine_state","machine":"arc","state":"caught"}]}],
+ "once":true,
+ "intent":"the alarm turns the guard hostile and starts a 3-turn capture clock"}
+```
+`Trigger{ when?: Guard, every?: int, once?: bool, effects: [Effect], intent: string }`
+(must have a `when` and/or `every`).
+
+- **Reactive (`when`).** After **every** committed change (`do`, `apply`, runtime
+  `set`/`rm`, and each `advance` tick) the engine settles: it fires triggers whose
+  `when` guard just became true. Firing is **edge-triggered** (fires on the rising
+  edge, re-arms when the guard goes false again) so it can't loop; cascades (one
+  trigger making another's guard true) resolve in the same settle.
+- **`once:true`** fires at most once ever (recommended for one-shot consequences);
+  `once:false` re-fires on each rising edge.
+- **Periodic (`every:N`).** Fires every `N` ticks of the clock — only during
+  `advance`, not on ordinary changes.
+
+**Time.** Each instance has an integer `clock` (path `clock`). The runtime
+`advance <instance> [n]` command ticks it: per tick it runs any due `schedule`d
+effects, fires periodic triggers, then settles. Use `schedule` for deadlines/
+delayed consequences and `cooldown` to gate re-use of an action over time.
+
+Encode automatic consequences and timers as triggers + `schedule`/`cooldown` so
+the engine enforces them — don't rely on the narrator to remember to apply them.
+
+## Narrative journal
+
+The engine keeps an LLM- and trigger-authored log of what happened (separate from
+the mechanical history). Append to it with the `record` op:
+
+```json
+{"op":"record","text":"Aria forgave you and returned the locket.","tags":["aria","day2"]}
+```
+Use it (in trigger/transition `effects`, or at runtime via `apply`) at
+consequential moments so any session — including a resumed one — can recall the
+story. Recent entries show up in `state` output; the full journal is read with
+`inspect <run> log`.
+
+## Skill checks (roll → if → compute)
+
+A single action can express a dice check by storing a roll and branching on the
+`roll.<store>` path:
+
+```json
+[{"op":"roll","dice":"1d20","store":"atk"},
+ {"op":"if","when":{"target":"roll.atk","op":"gte","value":12},
+    "then":[{"op":"compute","target":"entity.goblin.health","fn":"sub",
+             "a":{"$path":"entity.goblin.health"},"b":{"$roll":"atk"}}],
+    "else":[{"op":"mark_beat","beat":"you_miss"}]}]
+```
+Put quantitative outcomes (damage, scaled costs, checks) in `compute`/`if`/`$path`/
+`roll.<store>` so the engine does the math — never ask the model to compute it.
 
 ## Setup (seed the starting state)
 

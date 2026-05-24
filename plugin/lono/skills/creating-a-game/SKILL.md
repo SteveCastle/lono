@@ -159,7 +159,18 @@ in a good order:
    friends?" → `define derived` (reusable; read in guards and beats).
 10. **Story beats.** Authored prose the engine surfaces at the right moment
     (gated by a state and/or a guard). → `define event` (alias of `beat`).
-11. **Setup.** The starting cast is seeded from the first-class `entities` and
+11. **Reactive rules & time.** Encode automatic consequences and timers as
+    **triggers** (rules that fire by themselves when a condition arises) plus
+    `schedule`d/`cooldown` effects and the `advance` clock — so the *engine*
+    enforces "when the alarm sounds the guard turns hostile" or "the deadline
+    hits in 3 turns", not the narrator. Quantitative outcomes (damage, costs,
+    skill checks) belong in `compute`/`if`/`$path`/`roll.<store>` so the engine
+    does the math rather than the model. Use `set` collections for things you
+    accumulate — clues found, party members, topics discussed — and the `record`
+    journal op to log consequential moments so the story persists across
+    sessions. → `define trigger`; `set`-typed vars/attrs via `define var`/
+    `define entity-type`.
+12. **Setup.** The starting cast is seeded from the first-class `entities` and
     `relationships` sections (populated by `game add`/`give`). For advanced
     scripted seeding — rolls, conditional ops, anything not expressible
     declaratively — add a `setup` effect-op list; it runs after the cast is

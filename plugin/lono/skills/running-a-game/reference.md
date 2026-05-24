@@ -13,6 +13,7 @@ lono play list                                 # existing instance ids
 lono state <run> [--pretty]                    # KEY READ: full state + actions + beats + endings
 lono actions <run>                             # just the available actions
 lono do <run> <machine> <action> [--params '<json>'] [--entity <id> | --rel <from>,<to>]
+lono advance <run> [n]                         # advance in-game time n ticks (default 1): fires scheduled/periodic/reactive
 lono apply <run> --ops '<json-array>'          # ad-hoc state updates (documented ops only)
 lono inspect <run> [path] [--tree] [--depth N] # targeted read of live state (see §Inspect below)
 lono set <run> <path> --value <v> | --spec '<json>' [--force]  # targeted write (validated by default)
@@ -55,6 +56,10 @@ No path → whole state. `--tree` → names-only structural map. Path forms:
 | `derived` | all computed derived values |
 | `beats` | currently active beats |
 | `actions` | available actions |
+| `log` | the full narrative journal (`record` entries) |
+| `clock` | the current instance clock (tick count) |
+| `cooldowns` | active cooldowns and their due ticks |
+| `scheduled` | pending scheduled effects and when they fire |
 
 **Write or remove a node** (compiles to validated effect ops by default):
 ```
@@ -91,7 +96,7 @@ Every command prints one JSON object to stdout:
 `BAD_INPUT` (malformed args), `LOCKED` (instance busy), `INSTANCE_EXISTS`
 (`play start` would clobber — use a new `--id` or `--force`).
 
-## Reading `data` from `state` / `play start` / `do` / `apply`
+## Reading `data` from `state` / `play start` / `do` / `apply` / `advance`
 
 ```json
 "data": {
@@ -131,6 +136,11 @@ Every command prints one JSON object to stdout:
   ],
   "endingReached": [
     {"machine":"arc","state":"escaped_clean","description":"You vanish into the night."}
+  ],
+  "clock": 4,                                            // current in-game tick
+  "fired": ["raise_alarm"],                              // triggers that fired this command
+  "log": [                                               // recent narrative-journal entries
+    {"seq":7,"clock":4,"tags":["aria"],"text":"Aria forgave you and returned the locket."}
   ]
 }
 ```
@@ -149,6 +159,15 @@ How to use each field:
 - **`state`** — the ground truth for narration: who's where, how they feel
   (`relationships[].attrs`), what's worn (`entities[].equipped`), the scene
   (`machines`).
+- **`clock`** — the current in-game tick. Advance time with `advance <run> [n]`
+  when fiction passes (a day ends, a deadline approaches) — it fires any due
+  scheduled effects and periodic/reactive triggers.
+- **`fired`** — names of triggers the engine fired automatically this command.
+  These are consequences the engine already applied (state has changed) — read
+  them and **narrate the fallout** (the alarm tripped, a deadline elapsed).
+- **`log`** — the narrative journal so far (most recent `record` entries). Append
+  to it at meaningful moments with `apply <run> --ops '[{"op":"record","text":"…","tags":[…]}]'`;
+  on resume, read the full story with `inspect <run> log`.
 
 ## Performing actions — examples
 
@@ -167,6 +186,12 @@ lono -d ./.lono apply run1 --ops '[{"op":"adjust_relationship","relType":"romanc
 
 # Equip an outfit chosen by the player:
 lono -d ./.lono apply run1 --ops '[{"op":"equip","entity":"player","slot":"torso","item":"silk_dress"}]'
+
+# Advance in-game time (e.g. a night passes) — fires deadlines / periodic / reactive triggers:
+lono -d ./.lono advance run1 1
+
+# Write a memory to the narrative journal at a meaningful moment:
+lono -d ./.lono apply run1 --ops '[{"op":"record","text":"Aria forgave you on the rooftop.","tags":["aria"]}]'
 ```
 
 Use only documented ops in `apply` (see the authoring reference for the full op

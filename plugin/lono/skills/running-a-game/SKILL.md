@@ -52,7 +52,8 @@ pretending it worked.
    Pick a memorable `--id` (the save name). A fixed `--seed` makes dice
    reproducible. `play start` returns the opening state + actions.
    - To **resume** an existing session, skip `play start` and just read its
-     state: `lono --data-dir ./.lono state <run>`.
+     state: `lono --data-dir ./.lono state <run>`. To recall the story so far,
+     read the journal: `lono --data-dir ./.lono inspect <run> log`.
 
 ## The turn loop
 
@@ -63,8 +64,11 @@ Repeat each turn:
    per-entity machines), `state.relationships` (attrs + per-couple machines),
    `state.machines` (global scene), `derived` (social-graph summaries),
    `beats` (active narrative beats), `actions` (legal actions, each enabled or
-   disabled-with-reason, some flagged `requiresParams` or carrying a `host`), and
-   `endingReached`.
+   disabled-with-reason, some flagged `requiresParams` or carrying a `host`),
+   `endingReached`, and the v3 fields: `clock` (in-game time), `fired` (triggers
+   the engine fired automatically — consequences it already applied, which you
+   should **narrate**), and `log` (the narrative journal, the story so far —
+   especially important when resuming a session).
 2. **If an ending is reached,** narrate it richly using the ending's
    `description`/`intent`, wrap up, and stop the loop. (Offer to branch from a
    snapshot if they want a different outcome.)
@@ -95,7 +99,15 @@ Repeat each turn:
      validated effect ops (same bounds/type checks as `apply`); add `--force` for
      a raw override that bypasses validation. Use sparingly — prefer `do` for
      story-driven moves and `apply` for narrative nudges.
-6. **Loop** back to step 1 with the new state the command returned (or re-read).
+   - When **in-game time passes** (a scene ends, a day turns, a deadline looms),
+     advance the clock: `lono --data-dir ./.lono advance <run> [n]`. This fires due
+     scheduled effects and periodic/reactive triggers — check the returned `fired`
+     and narrate whatever the engine set in motion.
+   - At **meaningful narrative moments**, append a journal memory so it persists
+     across sessions: `lono --data-dir ./.lono apply <run> --ops '[{"op":"record","text":"…","tags":[…]}]'`.
+6. **Loop** back to step 1 with the new state the command returned. After any
+   `do`/`apply`/`advance`, check the returned `fired` list — those are automatic
+   consequences to narrate this turn.
 
 > **These are play-side commands.** Building or changing the game's definition
 > (adding characters, scenes, items, endings) belongs to the `creating-a-game`
