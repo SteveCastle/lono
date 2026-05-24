@@ -180,9 +180,18 @@ into the binary — no install, no network):
 
 - **Sections that mirror the model** — *Game* (the pitch), *World* (variables +
   setup), *Types* (entity / item / relationship kinds), *Cast* (the entities and
-  their starting relationships), *Story* (state machines, with endings authored as
-  terminal states), *Beats*, *Systems* (triggers + derived queries), *Lore*, and a
-  raw *JSON* tab as a universal fallback.
+  their starting relationships), *Map* (see below), *Story* (state machines, with
+  endings authored as terminal states), *Beats*, *Systems* (triggers + derived
+  queries), *Lore*, and a raw *JSON* tab as a universal fallback.
+- **A visual map & scene editor** — the *Map* section draws your location/exit
+  graph as draggable nodes with directional edges; click a place to name it, edit
+  its exits (direction, locked), and place characters and objects there (it manages
+  the `location` reference for you). The *Scenes* sub-tab lets you arrange "who is
+  where" and bind it to a story moment — *when machine X enters state Y* — optionally
+  marking a beat and writing a journal line. Each scene **compiles to a real
+  trigger** (`scene_…`), so the repositioning actually happens at runtime and in the
+  playtest. Map layout and scene authoring are stored under an `_editor` key the
+  engine ignores.
 - **Structured forms** for guards and effects — pick an op from a grouped menu and
   the right fields appear, with dropdowns populated from your own cast, item types,
   and machines.
