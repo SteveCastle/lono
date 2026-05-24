@@ -27,6 +27,8 @@ type State struct {
 	TriggerFired map[string]bool `json:"triggerFired,omitempty"`
 	// v3 narrative journal
 	Log []LogEntry `json:"log,omitempty"`
+	// v4 lore
+	DiscoveredLore []string `json:"discoveredLore,omitempty"`
 }
 
 // LogEntry is a single narrative journal record appended by the record effect.

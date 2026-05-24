@@ -18,13 +18,14 @@ func stateData(def *engine.Definition, st *engine.State, extra map[string]any) (
 		return nil, err
 	}
 	out := map[string]any{
-		"state":         st,
-		"actions":       actions,
-		"derived":       engine.BuildDerivedView(def, st),
-		"beats":         engine.ActiveBeats(def, st),
-		"endingReached": engine.EndingsReached(def, st),
-		"clock":         st.Clock,
-		"log":           lastNLog(st.Log, 10),
+		"state":          st,
+		"actions":        actions,
+		"derived":        engine.BuildDerivedView(def, st),
+		"beats":          engine.ActiveBeats(def, st),
+		"endingReached":  engine.EndingsReached(def, st),
+		"clock":          st.Clock,
+		"log":            lastNLog(st.Log, 10),
+		"discoveredLore": st.DiscoveredLore,
 	}
 	for k, v := range extra {
 		out[k] = v

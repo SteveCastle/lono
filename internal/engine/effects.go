@@ -72,6 +72,8 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		return recordOp(st, e)
 	case "move":
 		return moveOp(def, st, e)
+	case "discover":
+		return discoverOp(def, st, e)
 	default:
 		return fmt.Errorf("unknown effect op %q", e.Op)
 	}
@@ -158,6 +160,22 @@ func moveOp(def *Definition, st *State, e Effect) error {
 		}
 	}
 	en.Attrs[attr] = e.To
+	return nil
+}
+
+// discoverOp marks a lore entry as discovered in the instance.
+// It errors if the lore id is unknown in the definition.
+// Re-discovering an already-discovered entry is a no-op (idempotent).
+func discoverOp(def *Definition, st *State, e Effect) error {
+	if _, ok := def.Lore[e.Lore]; !ok {
+		return fmt.Errorf("unknown lore %q", e.Lore)
+	}
+	for _, id := range st.DiscoveredLore {
+		if id == e.Lore {
+			return nil // already discovered
+		}
+	}
+	st.DiscoveredLore = append(st.DiscoveredLore, e.Lore)
 	return nil
 }
 

@@ -192,6 +192,16 @@ func ValidateDefinition(def *Definition) []ValidationError {
 		}
 	}
 
+	for id, entry := range def.Lore {
+		path := fmt.Sprintf("lore.%s", id)
+		if entry.Title == "" {
+			add(path+".title", "lore title is required")
+		}
+		if entry.Text == "" {
+			add(path+".text", "lore text is required")
+		}
+	}
+
 	for id, b := range def.Beats {
 		path := "beats." + id
 		if b.Text == "" {
@@ -287,6 +297,10 @@ func validateEffect(path string, e Effect) []ValidationError {
 		}
 		if e.To == "" {
 			add(path+".to", "move requires to")
+		}
+	case "discover":
+		if e.Lore == "" {
+			add(path+".lore", "discover requires lore id")
 		}
 	}
 	return errs

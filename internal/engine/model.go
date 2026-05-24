@@ -20,9 +20,21 @@ type Definition struct {
 	Derived           map[string]DerivedSpec `json:"derived,omitempty"`
 	Beats             map[string]Beat        `json:"beats,omitempty"`
 	Triggers          map[string]Trigger     `json:"triggers,omitempty"`
+	Lore              map[string]LoreEntry   `json:"lore,omitempty"`
 	Entities          map[string]EntityInit  `json:"entities,omitempty"`
 	Relationships     []RelInit              `json:"relationships,omitempty"`
 	Setup             []Effect               `json:"setup,omitempty"`
+}
+
+// LoreEntry is an authored, static reference item in the game's codex.
+// Entries may be revealed at runtime via the discover effect.
+type LoreEntry struct {
+	Title   string   `json:"title"`
+	Text    string   `json:"text"`
+	Tags    []string `json:"tags,omitempty"`
+	Subject string   `json:"subject,omitempty"` // optional id this entry is about (entity/itemType/place/concept)
+	When    string   `json:"when,omitempty"`    // optional timeline marker ("Year 312", "before the war")
+	Intent  string   `json:"intent,omitempty"`
 }
 
 // Trigger is a reactive rule that fires automatically when its condition arises.
@@ -228,6 +240,8 @@ type Effect struct {
 	Store string `json:"store,omitempty"`
 	// narrative
 	Beat string `json:"beat,omitempty"`
+	// discover
+	Lore string `json:"lore,omitempty"`
 	// compute
 	Fn string `json:"fn,omitempty"`
 	A  any    `json:"a,omitempty"`
