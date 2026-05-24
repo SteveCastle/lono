@@ -39,6 +39,12 @@ lono has two cleanly separated APIs — never mix them:
 You build with `game …` / `define …`. You play with `play` / `do` / `apply`.
 They never mix.
 
+**Human-facing visual editor.** If the user would rather build by clicking than
+through this collaborative CLI flow, point them to `lono edit` — a local web app
+(lono studio) that edits the `*.lono.json` files in a directory with structured
+forms, live engine validation, and an in-editor playtest. It is for a person at a
+browser, not for you; you author through the commands below.
+
 ## The engine
 
 The plugin bundles the engine on your PATH as `lono`. Confirm it runs, then work

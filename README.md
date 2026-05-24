@@ -18,6 +18,7 @@ operate.
 - [How it works](#how-it-works)
 - [Install](#install)
 - [Quickstart: build and play a game](#quickstart-build-and-play-a-game)
+- [Visual editor: lono studio](#visual-editor-lono-studio)
 - [The two APIs: Construction vs Play](#the-two-apis-construction-vs-play)
 - [The game model](#the-game-model)
 - [The rule language: guards, effects, paths](#the-rule-language-guards-effects-paths)
@@ -159,6 +160,41 @@ lono $D do run1 arc leave_together                         # -> reaches the "tog
 ```
 
 The model would narrate around each step; lono keeps the bookkeeping honest.
+
+---
+
+## Visual editor: lono studio
+
+Prefer to build a game by clicking instead of hand-writing JSON? `lono edit`
+starts a local web app that reads and writes the `*.lono.json` files in a
+directory, organized the way a game designer thinks:
+
+```bash
+lono edit                       # serves the editor for *.lono.json in the current dir
+lono edit --dir examples        # edit a specific folder
+lono edit --port 4321 --no-open # choose the port; don't auto-open a browser
+```
+
+It opens `http://localhost:4321` with a single-page editor (everything is bundled
+into the binary — no install, no network):
+
+- **Sections that mirror the model** — *Game* (the pitch), *World* (variables +
+  setup), *Types* (entity / item / relationship kinds), *Cast* (the entities and
+  their starting relationships), *Story* (state machines, with endings authored as
+  terminal states), *Beats*, *Systems* (triggers + derived queries), *Lore*, and a
+  raw *JSON* tab as a universal fallback.
+- **Structured forms** for guards and effects — pick an op from a grouped menu and
+  the right fields appear, with dropdowns populated from your own cast, item types,
+  and machines.
+- **Live validation** — every edit is checked by the same engine the CLI uses; the
+  status pill turns red with a clickable list of problems.
+- **In-editor playtest** — a side panel starts an in-memory playthrough of the
+  current (even unsaved) definition: take actions (global *and* attached-machine,
+  per host), advance time, and watch the journal, derived values, fired triggers,
+  and endings update live.
+
+Files are saved as pretty-printed `<id>.lono.json` you can then `game import` and
+play, or commit to source control.
 
 ---
 
@@ -445,6 +481,7 @@ lono game list | show <id> | delete <id> | validate <id>
 lono game export <id> -o <file>           # save the portable definition
 lono game import --spec-file <file>       # load a whole definition (validated)
 lono game get <id> [path] [--tree] [--depth N]   # navigate/inspect the definition
+lono edit [--dir .] [--port 4321] [--no-open]    # launch the visual editor (lono studio)
 ```
 
 ### Construction — cast
@@ -543,6 +580,8 @@ internal/engine/     pure engine: model, guards, effects, machines, derived,
                      narrative (beats/endings), equipment, navigation, validation, rng
 internal/store/      filesystem persistence + per-instance locking
 internal/cli/        cobra commands (the JSON-envelope frontend)
+internal/editor/     the `lono edit` web app (embedded SPA + JSON API)
+examples/            ready-to-run example games (see examples/README.md)
 testdata/            golden example games used in the test suite
 plugin/              the Claude Code plugin (skills + bundled binaries)
 ```
