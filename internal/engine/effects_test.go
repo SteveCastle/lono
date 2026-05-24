@@ -898,3 +898,103 @@ func TestIfRollDrivenSkillCheck(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// A2: move op tests
+// ---------------------------------------------------------------------------
+
+func moveDef() *Definition {
+	return &Definition{
+		ID: "g", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"location": {Attributes: map[string]VarSpec{
+				"name": {Type: "string"},
+			}},
+			"person": {Attributes: map[string]VarSpec{
+				"name":     {Type: "string"},
+				"location": {Type: "ref", RefType: "location"},
+				"score":    {Type: "int", Default: float64(0)},
+			}},
+		},
+		RelationshipTypes: map[string]RelType{
+			"exit": {From: "location", To: "location", Directed: true},
+		},
+	}
+}
+
+func moveState(def *Definition) *State {
+	st, _ := NewInstance(def, "r", 1)
+	st.Entities["study"] = &Entity{Type: "location", Attrs: map[string]any{"name": "Study"}, Inventory: map[string]int{}}
+	st.Entities["hall"] = &Entity{Type: "location", Attrs: map[string]any{"name": "Hall"}, Inventory: map[string]int{}}
+	st.Entities["player"] = &Entity{Type: "person", Attrs: map[string]any{"name": "Player", "location": "study", "score": float64(0)}, Inventory: map[string]int{}}
+	st.Relationships = []*Relationship{
+		{Type: "exit", From: "study", To: "hall", Attrs: map[string]any{}},
+		{Type: "exit", From: "hall", To: "study", Attrs: map[string]any{}},
+	}
+	return st
+}
+
+func TestMoveOpPlain(t *testing.T) {
+	def := moveDef()
+	st := moveState(def)
+
+	// Plain move (no via): sets location.
+	if err := applyEffect(def, st, nil, Effect{Op: "move", Entity: "player", To: "hall"}); err != nil {
+		t.Fatalf("plain move: %v", err)
+	}
+	if st.Entities["player"].Attrs["location"] != "hall" {
+		t.Fatalf("plain move: location = %v, want hall", st.Entities["player"].Attrs["location"])
+	}
+}
+
+func TestMoveOpViaOK(t *testing.T) {
+	def := moveDef()
+	st := moveState(def)
+
+	// Move via exit: study→hall exists, so it should succeed.
+	if err := applyEffect(def, st, nil, Effect{Op: "move", Entity: "player", To: "hall", Via: "exit"}); err != nil {
+		t.Fatalf("move via exit: %v", err)
+	}
+	if st.Entities["player"].Attrs["location"] != "hall" {
+		t.Fatalf("move via exit: location = %v, want hall", st.Entities["player"].Attrs["location"])
+	}
+}
+
+func TestMoveOpViaRejected(t *testing.T) {
+	def := moveDef()
+	st := moveState(def)
+	// Add a third location with no exit from study.
+	st.Entities["garden"] = &Entity{Type: "location", Attrs: map[string]any{"name": "Garden"}, Inventory: map[string]int{}}
+
+	// No exit study→garden, so move via exit should fail.
+	err := applyEffect(def, st, nil, Effect{Op: "move", Entity: "player", To: "garden", Via: "exit"})
+	if err == nil {
+		t.Fatal("expected error: no exit study→garden")
+	}
+	// Location unchanged.
+	if st.Entities["player"].Attrs["location"] != "study" {
+		t.Fatalf("failed move mutated state: location = %v", st.Entities["player"].Attrs["location"])
+	}
+}
+
+func TestMoveOpNonRefRejected(t *testing.T) {
+	def := moveDef()
+	st := moveState(def)
+
+	// "score" is an int, not a ref — should fail.
+	err := applyEffect(def, st, nil, Effect{Op: "move", Entity: "player", To: "hall", Attr: "score"})
+	if err == nil {
+		t.Fatal("expected error: score is not a ref")
+	}
+}
+
+func TestMoveOpUnknownDestRejected(t *testing.T) {
+	def := moveDef()
+	st := moveState(def)
+
+	// Destination does not exist in state.
+	err := applyEffect(def, st, nil, Effect{Op: "move", Entity: "player", To: "dungeon"})
+	if err == nil {
+		t.Fatal("expected error: dungeon does not exist")
+	}
+}

@@ -212,11 +212,12 @@ type Effect struct {
 	EntityType string         `json:"entityType,omitempty"`
 	ID         string         `json:"id,omitempty"`
 	Attrs      map[string]any `json:"attrs,omitempty"`
-	// relationship
+	// relationship / move
 	RelType string   `json:"relType,omitempty"`
 	From    string   `json:"from,omitempty"`
 	To      string   `json:"to,omitempty"`
 	Attr    string   `json:"attr,omitempty"`
+	Via     string   `json:"via,omitempty"`
 	By      *float64 `json:"by,omitempty"`
 	// machine
 	Machine string `json:"machine,omitempty"`

@@ -281,6 +281,13 @@ func validateEffect(path string, e Effect) []ValidationError {
 		if e.Text == "" {
 			add(path+".text", "record text must not be empty")
 		}
+	case "move":
+		if e.Entity == "" {
+			add(path+".entity", "move requires entity")
+		}
+		if e.To == "" {
+			add(path+".to", "move requires to")
+		}
 	}
 	return errs
 }

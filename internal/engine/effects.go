@@ -70,6 +70,8 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		return cooldownOp(st, e)
 	case "record":
 		return recordOp(st, e)
+	case "move":
+		return moveOp(def, st, e)
 	default:
 		return fmt.Errorf("unknown effect op %q", e.Op)
 	}
@@ -114,6 +116,48 @@ func recordOp(st *State, e Effect) error {
 		Tags:  e.Tags,
 		Text:  e.Text,
 	})
+	return nil
+}
+
+// moveOp moves an entity to a new location by setting a ref attribute.
+// attr defaults to "location". If e.Via is set, a relationship of that type
+// from the entity's current attr value to e.To must exist.
+func moveOp(def *Definition, st *State, e Effect) error {
+	if e.Entity == "" {
+		return fmt.Errorf("move: entity is required")
+	}
+	if e.To == "" {
+		return fmt.Errorf("move: to is required")
+	}
+	en, ok := st.Entities[e.Entity]
+	if !ok {
+		return fmt.Errorf("move: unknown entity %q", e.Entity)
+	}
+	attr := e.Attr
+	if attr == "" {
+		attr = "location"
+	}
+	et, ok := def.EntityTypes[en.Type]
+	if !ok {
+		return fmt.Errorf("move: unknown entity type %q", en.Type)
+	}
+	spec, ok := et.Attributes[attr]
+	if !ok {
+		return fmt.Errorf("move: entity type %q has no attribute %q", en.Type, attr)
+	}
+	if spec.Type != "ref" {
+		return fmt.Errorf("move: attribute %q on %q is not a ref (got %q)", attr, en.Type, spec.Type)
+	}
+	if _, ok := st.Entities[e.To]; !ok {
+		return fmt.Errorf("move: destination %q does not exist", e.To)
+	}
+	if e.Via != "" {
+		cur, _ := en.Attrs[attr].(string)
+		if findRelationship(st, e.Via, cur, e.To) == nil {
+			return fmt.Errorf("no %s from %q to %q", e.Via, cur, e.To)
+		}
+	}
+	en.Attrs[attr] = e.To
 	return nil
 }
 
