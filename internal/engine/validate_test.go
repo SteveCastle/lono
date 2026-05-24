@@ -247,6 +247,114 @@ func TestValidateBeatAttachedMachine(t *testing.T) {
 	}
 }
 
+// B4: compute and if validation
+
+func TestValidateComputeAndIfEffects(t *testing.T) {
+	// Bad def: compute with unknown fn and if with nil when -> >=2 errors.
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"score": {Type: "int", Default: float64(0)},
+		},
+		Machines: map[string]Machine{
+			"arc": {
+				Initial: "a", States: []string{"a", "b"},
+				Transitions: []Transition{
+					{
+						ID: "go", From: StateSet{"a"}, To: "b",
+						Effects: []Effect{
+							// compute with bad fn ("" is not valid)
+							{Op: "compute", Target: "world.score", Fn: "", A: float64(1), B: float64(2)},
+							// if with nil when
+							{Op: "if", Then: []Effect{{Op: "set", Target: "world.score", Value: float64(1)}}},
+						},
+					},
+				},
+			},
+		},
+	}
+	errs := ValidateDefinition(def)
+	if len(errs) < 2 {
+		t.Fatalf("expected >=2 validation errors for bad compute fn and if without when, got %d: %v", len(errs), errs)
+	}
+}
+
+func TestValidateComputeAndIfEffectsValid(t *testing.T) {
+	// Valid def with compute and if effects -> 0 errors from these ops.
+	lo, hi := 0.0, 100.0
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"score": {Type: "int", Default: float64(0), Min: &lo, Max: &hi},
+			"day":   {Type: "int", Default: float64(1)},
+		},
+		Machines: map[string]Machine{
+			"arc": {
+				Initial: "a", States: []string{"a", "b"},
+				Transitions: []Transition{
+					{
+						ID: "go", From: StateSet{"a"}, To: "b",
+						Effects: []Effect{
+							{Op: "compute", Target: "world.score", Fn: "add", A: float64(1), B: float64(2)},
+							{
+								Op:   "if",
+								When: &Guard{Target: "world.day", Op: "gte", Value: float64(1)},
+								Then: []Effect{{Op: "set", Target: "world.score", Value: float64(5)}},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	errs := ValidateDefinition(def)
+	// Should be zero errors
+	if len(errs) != 0 {
+		t.Fatalf("expected 0 errors for valid compute/if, got %d: %v", len(errs), errs)
+	}
+}
+
+func TestValidateComputeSetupEffects(t *testing.T) {
+	// compute in setup with bad fn -> error
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"score": {Type: "int", Default: float64(0)},
+		},
+		Setup: []Effect{
+			{Op: "compute", Target: "world.score", Fn: "badop", A: float64(1), B: float64(2)},
+		},
+	}
+	errs := ValidateDefinition(def)
+	if len(errs) == 0 {
+		t.Fatal("expected error for bad compute fn in setup")
+	}
+}
+
+func TestValidateIfNestedComputeError(t *testing.T) {
+	// if effect with a compute in then that has bad fn -> error propagates
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"score": {Type: "int", Default: float64(0)},
+			"day":   {Type: "int", Default: float64(1)},
+		},
+		Setup: []Effect{
+			{
+				Op:   "if",
+				When: &Guard{Target: "world.day", Op: "gte", Value: float64(1)},
+				Then: []Effect{
+					{Op: "compute", Target: "world.score", Fn: "invalid", A: float64(1), B: float64(2)},
+				},
+			},
+		},
+	}
+	errs := ValidateDefinition(def)
+	if len(errs) == 0 {
+		t.Fatal("expected error for bad fn inside if.then")
+	}
+}
+
 func TestValidateSetSpec(t *testing.T) {
 	// Valid set specs: elem string and ref.
 	good := &Definition{

@@ -208,6 +208,51 @@ func ValidateDefinition(def *Definition) []ValidationError {
 			}
 		}
 	}
+
+	// Validate effects in setup and machine transitions (new ops: compute, if).
+	for i, e := range def.Setup {
+		errs = append(errs, validateEffect(fmt.Sprintf("setup[%d]", i), e)...)
+	}
+	for mName, m := range def.Machines {
+		for _, tr := range m.Transitions {
+			for i, e := range tr.Effects {
+				errs = append(errs, validateEffect(fmt.Sprintf("machines.%s.%s.effects[%d]", mName, tr.ID, i), e)...)
+			}
+		}
+	}
+
+	return errs
+}
+
+// validateEffect checks the new compute and if ops for structural correctness.
+// It recurses into if.Then and if.Else so nested effects are also checked.
+func validateEffect(path string, e Effect) []ValidationError {
+	var errs []ValidationError
+	add := func(p, msg string) { errs = append(errs, ValidationError{Path: p, Message: msg}) }
+
+	switch e.Op {
+	case "compute":
+		validFns := map[string]bool{"add": true, "sub": true, "mul": true, "div": true, "min": true, "max": true, "mod": true}
+		if !validFns[e.Fn] {
+			add(path+".fn", fmt.Sprintf("compute fn %q is not valid (want add|sub|mul|div|min|max|mod)", e.Fn))
+		}
+		if e.A == nil {
+			add(path+".a", "compute requires operand a")
+		}
+		if e.B == nil {
+			add(path+".b", "compute requires operand b")
+		}
+	case "if":
+		if e.When == nil {
+			add(path+".when", "if effect requires a when guard")
+		}
+		for i, sub := range e.Then {
+			errs = append(errs, validateEffect(fmt.Sprintf("%s.then[%d]", path, i), sub)...)
+		}
+		for i, sub := range e.Else {
+			errs = append(errs, validateEffect(fmt.Sprintf("%s.else[%d]", path, i), sub)...)
+		}
+	}
 	return errs
 }
 
