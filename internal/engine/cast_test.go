@@ -22,16 +22,16 @@ func TestAddCharacter(t *testing.T) {
 	def := castDef()
 
 	// Errors on empty id/type.
-	if err := AddCharacter(def, "", "character", nil); err == nil {
+	if err := AddCharacter(def, "", "character", nil, ""); err == nil {
 		t.Fatal("expected error for empty id")
 	}
-	if err := AddCharacter(def, "aria", "", nil); err == nil {
+	if err := AddCharacter(def, "aria", "", nil, ""); err == nil {
 		t.Fatal("expected error for empty type")
 	}
 
 	// Add aria.
 	attrs := map[string]any{"charm": float64(7)}
-	if err := AddCharacter(def, "aria", "character", attrs); err != nil {
+	if err := AddCharacter(def, "aria", "character", attrs, ""); err != nil {
 		t.Fatalf("AddCharacter: %v", err)
 	}
 	e, ok := def.Entities["aria"]
@@ -46,7 +46,7 @@ func TestAddCharacter(t *testing.T) {
 	}
 
 	// Replace with updated attrs.
-	if err := AddCharacter(def, "aria", "character", map[string]any{"charm": float64(9)}); err != nil {
+	if err := AddCharacter(def, "aria", "character", map[string]any{"charm": float64(9)}, ""); err != nil {
 		t.Fatalf("AddCharacter replace: %v", err)
 	}
 	if def.Entities["aria"].Attrs["charm"] != float64(9) {
@@ -56,7 +56,7 @@ func TestAddCharacter(t *testing.T) {
 	// Nil Entities map is initialized automatically.
 	def2 := castDef()
 	def2.Entities = nil
-	if err := AddCharacter(def2, "player", "character", nil); err != nil {
+	if err := AddCharacter(def2, "player", "character", nil, ""); err != nil {
 		t.Fatalf("AddCharacter nil map: %v", err)
 	}
 	if def2.Entities["player"].Type != "character" {
@@ -66,8 +66,8 @@ func TestAddCharacter(t *testing.T) {
 
 func TestRemoveCharacter(t *testing.T) {
 	def := castDef()
-	_ = AddCharacter(def, "aria", "character", nil)
-	_ = AddCharacter(def, "player", "character", nil)
+	_ = AddCharacter(def, "aria", "character", nil, "")
+	_ = AddCharacter(def, "player", "character", nil, "")
 	_ = AddRelationship(def, "trust", "aria", "player", nil)
 	_ = AddRelationship(def, "trust", "player", "aria", nil)
 
@@ -94,8 +94,8 @@ func TestRemoveCharacter(t *testing.T) {
 
 func TestAddRelationship(t *testing.T) {
 	def := castDef()
-	_ = AddCharacter(def, "aria", "character", nil)
-	_ = AddCharacter(def, "player", "character", nil)
+	_ = AddCharacter(def, "aria", "character", nil, "")
+	_ = AddCharacter(def, "player", "character", nil, "")
 
 	if err := AddRelationship(def, "trust", "aria", "player", map[string]any{"value": float64(10)}); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
@@ -132,8 +132,8 @@ func TestAddRelationship(t *testing.T) {
 
 func TestRemoveRelationship(t *testing.T) {
 	def := castDef()
-	_ = AddCharacter(def, "aria", "character", nil)
-	_ = AddCharacter(def, "player", "character", nil)
+	_ = AddCharacter(def, "aria", "character", nil, "")
+	_ = AddCharacter(def, "player", "character", nil, "")
 	_ = AddRelationship(def, "trust", "aria", "player", nil)
 
 	// Error if absent.
@@ -151,7 +151,7 @@ func TestRemoveRelationship(t *testing.T) {
 
 func TestGiveItem(t *testing.T) {
 	def := castDef()
-	_ = AddCharacter(def, "aria", "character", nil)
+	_ = AddCharacter(def, "aria", "character", nil, "")
 
 	// Error if char absent.
 	if err := GiveItem(def, "ghost", "sword", 1, ""); err == nil {
@@ -175,7 +175,7 @@ func TestGiveItem(t *testing.T) {
 	}
 
 	// Both at once.
-	_ = AddCharacter(def, "player", "character", nil)
+	_ = AddCharacter(def, "player", "character", nil, "")
 	if err := GiveItem(def, "player", "sword", 2, "hand"); err != nil {
 		t.Fatalf("GiveItem both: %v", err)
 	}
@@ -208,5 +208,50 @@ func TestGiveItem(t *testing.T) {
 	}
 	if def2.Entities["bare"].Equipped["hand"] != "sword" {
 		t.Fatalf("nil equipped not initialized: %v", def2.Entities["bare"].Equipped)
+	}
+}
+
+// TestAddCharacterDescription verifies that AddCharacter stores the description
+// in EntityInit and that seedCast seeds it onto the runtime Entity.
+func TestAddCharacterDescription(t *testing.T) {
+	def := castDef()
+	// Add entity type with a location attr so we can start an instance.
+	def.EntityTypes["character"] = EntityType{Attributes: map[string]VarSpec{}}
+
+	const desc = "A worn leather armchair, crammed with dog-eared books."
+	if err := AddCharacter(def, "chair", "character", nil, desc); err != nil {
+		t.Fatalf("AddCharacter with description: %v", err)
+	}
+	if def.Entities["chair"].Description != desc {
+		t.Fatalf("EntityInit.Description: got %q, want %q", def.Entities["chair"].Description, desc)
+	}
+
+	// Start an instance: seedCast should copy Description onto Entity.
+	st, err := StartInstance(def, "r", 1)
+	if err != nil {
+		t.Fatalf("StartInstance: %v", err)
+	}
+	ent, ok := st.Entities["chair"]
+	if !ok {
+		t.Fatal("chair entity not in state")
+	}
+	if ent.Description != desc {
+		t.Fatalf("Entity.Description after start: got %q, want %q", ent.Description, desc)
+	}
+}
+
+// TestDescriptionEmptyNotSeeded verifies that an empty description is not set.
+func TestDescriptionEmptyNotSeeded(t *testing.T) {
+	def := castDef()
+	def.EntityTypes["character"] = EntityType{Attributes: map[string]VarSpec{}}
+	if err := AddCharacter(def, "player", "character", nil, ""); err != nil {
+		t.Fatalf("AddCharacter: %v", err)
+	}
+	st, err := StartInstance(def, "r", 1)
+	if err != nil {
+		t.Fatalf("StartInstance: %v", err)
+	}
+	if st.Entities["player"].Description != "" {
+		t.Fatalf("empty description should not be set: got %q", st.Entities["player"].Description)
 	}
 }

@@ -41,10 +41,11 @@ func (t Trigger) once() bool { return t.Once == nil || *t.Once }
 
 // EntityInit is the declarative starting configuration for a cast member.
 type EntityInit struct {
-	Type      string            `json:"type"`
-	Attrs     map[string]any    `json:"attrs,omitempty"`
-	Inventory map[string]int    `json:"inventory,omitempty"`
-	Equipped  map[string]string `json:"equipped,omitempty"`
+	Type        string            `json:"type"`
+	Attrs       map[string]any    `json:"attrs,omitempty"`
+	Inventory   map[string]int    `json:"inventory,omitempty"`
+	Equipped    map[string]string `json:"equipped,omitempty"`
+	Description string            `json:"description,omitempty"`
 }
 
 // RelInit is the declarative starting configuration for a relationship between

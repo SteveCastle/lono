@@ -5,7 +5,7 @@ import "fmt"
 // AddCharacter adds or replaces an entity in def.Entities. It returns an error
 // if id or typ is empty. Nil maps on the definition are initialized. The caller
 // is responsible for re-validating and saving the definition after the call.
-func AddCharacter(def *Definition, id, typ string, attrs map[string]any) error {
+func AddCharacter(def *Definition, id, typ string, attrs map[string]any, description string) error {
 	if id == "" {
 		return fmt.Errorf("character id is required")
 	}
@@ -15,7 +15,7 @@ func AddCharacter(def *Definition, id, typ string, attrs map[string]any) error {
 	if def.Entities == nil {
 		def.Entities = map[string]EntityInit{}
 	}
-	def.Entities[id] = EntityInit{Type: typ, Attrs: attrs}
+	def.Entities[id] = EntityInit{Type: typ, Attrs: attrs, Description: description}
 	return nil
 }
 

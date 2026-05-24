@@ -45,11 +45,12 @@ type ScheduledItem struct {
 }
 
 type Entity struct {
-	Type      string            `json:"type"`
-	Attrs     map[string]any    `json:"attrs"`
-	Inventory map[string]int    `json:"inventory"`
-	Machines  map[string]string `json:"machines,omitempty"`
-	Equipped  map[string]string `json:"equipped,omitempty"`
+	Type        string            `json:"type"`
+	Attrs       map[string]any    `json:"attrs"`
+	Inventory   map[string]int    `json:"inventory"`
+	Machines    map[string]string `json:"machines,omitempty"`
+	Equipped    map[string]string `json:"equipped,omitempty"`
+	Description string            `json:"description,omitempty"`
 }
 
 type Relationship struct {

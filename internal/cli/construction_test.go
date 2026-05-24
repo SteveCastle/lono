@@ -231,6 +231,42 @@ func TestConstructionGiveEquip(t *testing.T) {
 	}
 }
 
+// TestAddCharacterDescription verifies --description round-trips via game add
+// character and is then visible in game get entities/<id>/description and in the
+// runtime state via inspect <run> entities/<id>/description.
+func TestAddCharacterDescription(t *testing.T) {
+	dir := t.TempDir()
+	seedConstructionGame(t, dir)
+
+	const desc = "A sunlit study with mahogany shelves."
+	env, _ := runCLI(t, dir, "game", "add", "character", "g", "study",
+		"--type", "character", "--description", desc)
+	if !env.OK {
+		t.Fatalf("add character with description failed: %+v", env.Error)
+	}
+
+	// game get entities/study/description should return the authored description.
+	env, _ = runCLI(t, dir, "game", "get", "g", "entities/study/description")
+	if !env.OK {
+		t.Fatalf("game get entities/study/description failed: %+v", env.Error)
+	}
+	got := env.Data.(map[string]any)["value"]
+	if got != desc {
+		t.Fatalf("description round-trip: got %v, want %q", got, desc)
+	}
+
+	// Start a run, then inspect to confirm the runtime entity has the description.
+	runCLI(t, dir, "play", "start", "g", "--id", "run1", "--seed", "1")
+	env, _ = runCLI(t, dir, "inspect", "run1", "entities/study/description")
+	if !env.OK {
+		t.Fatalf("inspect entities/study/description failed: %+v", env.Error)
+	}
+	gotInspect := env.Data.(map[string]any)["value"]
+	if gotInspect != desc {
+		t.Fatalf("inspect description: got %v, want %q", gotInspect, desc)
+	}
+}
+
 // TestConstructionValidateOK confirms game validate is clean after construction.
 func TestConstructionValidateOK(t *testing.T) {
 	dir := t.TempDir()

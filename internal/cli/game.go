@@ -168,13 +168,14 @@ func (a *app) newGameCmd() *cobra.Command {
 	addCmd := &cobra.Command{Use: "add", Short: "Add a cast member or relationship"}
 
 	addCharacter := &cobra.Command{
-		Use:   "character <game> <id> --type <type> [--attrs '<json>']",
+		Use:   "character <game> <id> --type <type> [--attrs '<json>'] [--description '<text>']",
 		Short: "Add a character to the cast",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			gameID, id := args[0], args[1]
 			typ, _ := c.Flags().GetString("type")
 			attrsRaw, _ := c.Flags().GetString("attrs")
+			desc, _ := c.Flags().GetString("description")
 			var attrs map[string]any
 			if attrsRaw != "" {
 				if err := json.Unmarshal([]byte(attrsRaw), &attrs); err != nil {
@@ -183,12 +184,13 @@ func (a *app) newGameCmd() *cobra.Command {
 				}
 			}
 			return a.mutateDef(c, "game.add.character", gameID, func(def *engine.Definition) error {
-				return engine.AddCharacter(def, id, typ, attrs)
+				return engine.AddCharacter(def, id, typ, attrs, desc)
 			})
 		},
 	}
 	addCharacter.Flags().String("type", "", "entity type for the character (required)")
 	addCharacter.Flags().String("attrs", "", "initial attribute values as a JSON object")
+	addCharacter.Flags().String("description", "", "per-instance description for this entity")
 
 	addRelationship := &cobra.Command{
 		Use:   "relationship <game> <type> <from> <to> [--attrs '<json>']",

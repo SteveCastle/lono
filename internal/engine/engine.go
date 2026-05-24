@@ -62,6 +62,10 @@ func seedCast(def *Definition, st *State, ctx *evalCtx) error {
 		}); err != nil {
 			return fmt.Errorf("cast entity %q (create): %w", id, err)
 		}
+		// 1a. Seed per-instance description (not carried by create_entity effect).
+		if e.Description != "" {
+			st.Entities[id].Description = e.Description
+		}
 		// 2. Add inventory items (sorted for determinism).
 		invKeys := make([]string, 0, len(e.Inventory))
 		for item := range e.Inventory {
