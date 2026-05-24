@@ -76,6 +76,23 @@ func resolvePath(st *State, ctx *evalCtx, path string) (any, error) {
 		return nil, fmt.Errorf("empty path")
 	}
 	switch parts[0] {
+	case "clock":
+		// clock → current tick count as float64.
+		if len(parts) != 1 {
+			return nil, fmt.Errorf("bad clock path %q: expected just \"clock\"", path)
+		}
+		return float64(st.Clock), nil
+	case "cooldown":
+		// cooldown.<key> → remaining ticks until expiry (0 if already expired or absent).
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("bad cooldown path %q: expected cooldown.<key>", path)
+		}
+		due := st.Cooldowns[parts[1]]
+		remaining := due - st.Clock
+		if remaining < 0 {
+			remaining = 0
+		}
+		return float64(remaining), nil
 	case "roll":
 		// roll.<store> reads a stored roll result from ctx.
 		if len(parts) != 2 {

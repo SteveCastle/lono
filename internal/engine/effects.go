@@ -61,9 +61,40 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		return setRemoveOp(def, st, ctx, e)
 	case "clear":
 		return setClearOp(def, st, ctx, e)
+	case "schedule":
+		return scheduleOp(st, e)
+	case "cooldown":
+		return cooldownOp(st, e)
 	default:
 		return fmt.Errorf("unknown effect op %q", e.Op)
 	}
+}
+
+// scheduleOp enqueues e.Do to fire when st.Clock reaches st.Clock+e.In.
+func scheduleOp(st *State, e Effect) error {
+	if e.In <= 0 {
+		return fmt.Errorf("schedule: in must be > 0 (got %d)", e.In)
+	}
+	st.Scheduled = append(st.Scheduled, ScheduledItem{
+		Due:     st.Clock + e.In,
+		Effects: e.Do,
+	})
+	return nil
+}
+
+// cooldownOp sets a named cooldown expiry: Cooldowns[Key] = Clock + Ticks.
+func cooldownOp(st *State, e Effect) error {
+	if e.Key == "" {
+		return fmt.Errorf("cooldown: key must not be empty")
+	}
+	if e.Ticks <= 0 {
+		return fmt.Errorf("cooldown: ticks must be > 0 (got %d)", e.Ticks)
+	}
+	if st.Cooldowns == nil {
+		st.Cooldowns = map[string]int{}
+	}
+	st.Cooldowns[e.Key] = st.Clock + e.Ticks
+	return nil
 }
 
 // ifOp evaluates e.When; applies e.Then on true else e.Else. Nestable.
