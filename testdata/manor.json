@@ -69,5 +69,19 @@
     {"type": "exit", "from": "hall",   "to": "study",  "attrs": {"direction": "south"}},
     {"type": "exit", "from": "hall",   "to": "garden", "attrs": {"direction": "east"}},
     {"type": "exit", "from": "garden", "to": "hall",   "attrs": {"direction": "west"}}
-  ]
+  ],
+  "lore": {
+    "manor_history": {
+      "title": "Ashford Manor — A Brief History",
+      "text":  "The manor was erected in Year 312 by Lord Edmund Ashford after the western wars. Its study was said to hold every treaty signed in the region.",
+      "tags":  ["manor", "history"],
+      "when":  "Year 312"
+    },
+    "locket_provenance": {
+      "title":   "The Silver Locket",
+      "text":    "Engraved with the initials E.A., this locket was the personal token of Lady Eleanor Ashford, last of the direct line.",
+      "subject": "player",
+      "tags":    ["manor", "item"]
+    }
+  }
 }

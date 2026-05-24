@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -26,6 +27,77 @@ func TestManorValid(t *testing.T) {
 	def := loadManor(t)
 	if errs := ValidateDefinition(def); len(errs) != 0 {
 		t.Fatalf("manor definition should be valid; errors: %v", errs)
+	}
+}
+
+// TestManorLore verifies that the manor golden contains the expected lore entries
+// and that the discover op correctly tracks them on an instance.
+func TestManorLore(t *testing.T) {
+	def := loadManor(t)
+
+	// Confirm the two expected lore entries are present and valid.
+	if _, ok := def.Lore["manor_history"]; !ok {
+		t.Fatal("manor_history lore entry missing")
+	}
+	if _, ok := def.Lore["locket_provenance"]; !ok {
+		t.Fatal("locket_provenance lore entry missing")
+	}
+
+	mh := def.Lore["manor_history"]
+	if mh.Title == "" || mh.Text == "" {
+		t.Fatalf("manor_history missing title or text: %+v", mh)
+	}
+	if mh.When != "Year 312" {
+		t.Errorf("manor_history when: got %q, want Year 312", mh.When)
+	}
+	if !strings.Contains(strings.Join(mh.Tags, ","), "manor") {
+		t.Errorf("manor_history tags should include 'manor': %v", mh.Tags)
+	}
+
+	lp := def.Lore["locket_provenance"]
+	if lp.Subject != "player" {
+		t.Errorf("locket_provenance subject: got %q, want player", lp.Subject)
+	}
+
+	// Start an instance and discover manor_history.
+	st, err := StartInstance(def, "manor_lore_run", 1)
+	if err != nil {
+		t.Fatalf("StartInstance: %v", err)
+	}
+	if len(st.DiscoveredLore) != 0 {
+		t.Fatal("DiscoveredLore should start empty")
+	}
+
+	st2, _, err := ApplyOps(def, st, []Effect{
+		{Op: "discover", Lore: "manor_history"},
+	})
+	if err != nil {
+		t.Fatalf("discover manor_history: %v", err)
+	}
+	if len(st2.DiscoveredLore) != 1 || st2.DiscoveredLore[0] != "manor_history" {
+		t.Fatalf("DiscoveredLore = %v, want [manor_history]", st2.DiscoveredLore)
+	}
+
+	// Discover locket_provenance as well.
+	st3, _, err := ApplyOps(def, st2, []Effect{
+		{Op: "discover", Lore: "locket_provenance"},
+	})
+	if err != nil {
+		t.Fatalf("discover locket_provenance: %v", err)
+	}
+	if len(st3.DiscoveredLore) != 2 {
+		t.Fatalf("expected 2 discovered, got %d: %v", len(st3.DiscoveredLore), st3.DiscoveredLore)
+	}
+
+	// Idempotent: re-discover manor_history — still 2.
+	st4, _, err := ApplyOps(def, st3, []Effect{
+		{Op: "discover", Lore: "manor_history"},
+	})
+	if err != nil {
+		t.Fatalf("idempotent discover: %v", err)
+	}
+	if len(st4.DiscoveredLore) != 2 {
+		t.Fatalf("idempotent discover should leave count at 2, got %d", len(st4.DiscoveredLore))
 	}
 }
 

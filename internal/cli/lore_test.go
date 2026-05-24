@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -251,5 +253,70 @@ func TestLoreListAndShow(t *testing.T) {
 	}
 	if envMiss.Error == nil || envMiss.Error.Code != "NOT_FOUND" {
 		t.Fatalf("expected NOT_FOUND code, got: %+v", envMiss.Error)
+	}
+}
+
+// TestManorLoreCLI loads the manor golden (via game import) and exercises
+// lore show and discover via apply using the CLI.
+func TestManorLoreCLI(t *testing.T) {
+	manorPath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "manor.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(manorPath); err != nil {
+		t.Skipf("manor.json not found: %v", err)
+	}
+
+	dir := t.TempDir()
+
+	// Import the manor definition.
+	envImp, _ := runCLI(t, dir, "game", "import", "--spec-file", manorPath)
+	if !envImp.OK {
+		t.Fatalf("game import failed: %+v", envImp.Error)
+	}
+
+	// lore show manor manor_history returns the full entry.
+	envShow, _ := runCLI(t, dir, "lore", "show", "manor", "manor_history")
+	if !envShow.OK {
+		t.Fatalf("lore show manor_history failed: %+v", envShow.Error)
+	}
+	bShow, _ := json.Marshal(envShow.Data)
+	var showData map[string]any
+	_ = json.Unmarshal(bShow, &showData)
+	entry, ok := showData["entry"].(map[string]any)
+	if !ok {
+		t.Fatalf("entry missing from lore show: %v", showData)
+	}
+	if entry["title"] == "" {
+		t.Error("manor_history title should not be empty")
+	}
+	text, _ := entry["text"].(string)
+	if !strings.Contains(text, "Year 312") {
+		t.Errorf("manor_history text should mention Year 312, got: %q", text)
+	}
+
+	// lore show missing id — NOT_FOUND.
+	envBad, _ := runCLI(t, dir, "lore", "show", "manor", "no_such")
+	if envBad.OK {
+		t.Fatal("expected NOT_FOUND for unknown lore id on manor")
+	}
+
+	// Start a play session and discover manor_history.
+	envStart, _ := runCLI(t, dir, "play", "start", "manor", "--id", "mr1", "--seed", "42")
+	if !envStart.OK {
+		t.Fatalf("play start manor failed: %+v", envStart.Error)
+	}
+
+	envDisc, _ := runCLI(t, dir, "apply", "mr1",
+		"--ops", `[{"op":"discover","lore":"manor_history"}]`)
+	if !envDisc.OK {
+		t.Fatalf("apply discover manor_history failed: %+v", envDisc.Error)
+	}
+	bDisc, _ := json.Marshal(envDisc.Data)
+	var discData map[string]any
+	_ = json.Unmarshal(bDisc, &discData)
+	dl := discData["discoveredLore"].([]any)
+	if len(dl) != 1 || dl[0] != "manor_history" {
+		t.Fatalf("discoveredLore = %v, want [manor_history]", dl)
 	}
 }
