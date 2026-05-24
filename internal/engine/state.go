@@ -19,6 +19,18 @@ type State struct {
 	Relationships  []*Relationship    `json:"relationships"`
 	History        []HistoryEntry     `json:"history"`
 	DeliveredBeats []string           `json:"deliveredBeats,omitempty"`
+	// v3 time + trigger state
+	Clock        int             `json:"clock"`
+	Scheduled    []ScheduledItem `json:"scheduled,omitempty"`
+	Cooldowns    map[string]int  `json:"cooldowns,omitempty"`
+	TriggerArmed map[string]bool `json:"triggerArmed,omitempty"`
+	TriggerFired map[string]bool `json:"triggerFired,omitempty"`
+}
+
+// ScheduledItem holds effects to apply at a specific clock tick.
+type ScheduledItem struct {
+	Due     int      `json:"due"`
+	Effects []Effect `json:"effects"`
 }
 
 type Entity struct {

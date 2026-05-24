@@ -19,10 +19,25 @@ type Definition struct {
 	Machines          map[string]Machine     `json:"machines,omitempty"`
 	Derived           map[string]DerivedSpec `json:"derived,omitempty"`
 	Beats             map[string]Beat        `json:"beats,omitempty"`
+	Triggers          map[string]Trigger     `json:"triggers,omitempty"`
 	Entities          map[string]EntityInit  `json:"entities,omitempty"`
 	Relationships     []RelInit              `json:"relationships,omitempty"`
 	Setup             []Effect               `json:"setup,omitempty"`
 }
+
+// Trigger is a reactive rule that fires automatically when its condition arises.
+// A trigger must have a When guard (for reactive/edge firing) and/or an Every
+// value (for periodic firing during Advance).
+type Trigger struct {
+	When    *Guard   `json:"when,omitempty"`
+	Every   int      `json:"every,omitempty"`
+	Once    *bool    `json:"once,omitempty"` // nil means true (one-shot, matches Beat convention)
+	Effects []Effect `json:"effects"`
+	Intent  string   `json:"intent,omitempty"`
+}
+
+// once reports whether a trigger fires at most once ever (the default when unset).
+func (t Trigger) once() bool { return t.Once == nil || *t.Once }
 
 // EntityInit is the declarative starting configuration for a cast member.
 type EntityInit struct {
@@ -219,6 +234,12 @@ type Effect struct {
 	When *Guard   `json:"when,omitempty"`
 	Then []Effect `json:"then,omitempty"`
 	Else []Effect `json:"else,omitempty"`
+	// schedule: enqueue Do to fire in In ticks
+	In int      `json:"in,omitempty"`
+	Do []Effect `json:"do,omitempty"`
+	// cooldown: set a named cooldown expiring in Ticks ticks
+	Key   string `json:"key,omitempty"`
+	Ticks int    `json:"ticks,omitempty"`
 }
 
 // StateSet is a transition's "from": a single state, a list, or "*".
