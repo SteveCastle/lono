@@ -1,7 +1,7 @@
 # lono runtime reference
 
 Commands and output format for playing a game. Use one `--data-dir` for the whole
-session (shown abbreviated; use the full `--data-dir ./.lono`).
+session (`-d` is the shorthand, e.g. `-d ./.lono`).
 
 ## Runtime commands
 
