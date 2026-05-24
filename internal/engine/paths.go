@@ -76,6 +76,19 @@ func resolvePath(st *State, ctx *evalCtx, path string) (any, error) {
 		return nil, fmt.Errorf("empty path")
 	}
 	switch parts[0] {
+	case "roll":
+		// roll.<store> reads a stored roll result from ctx.
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("bad roll path %q: expected roll.<store>", path)
+		}
+		if ctx == nil {
+			return nil, fmt.Errorf("roll path %q not available outside an action context", path)
+		}
+		v, ok := ctx.rolls[parts[1]]
+		if !ok {
+			return nil, fmt.Errorf("no stored roll %q", parts[1])
+		}
+		return v, nil
 	case "len":
 		if len(parts) < 2 {
 			return nil, fmt.Errorf("bad len path %q: missing inner path", path)

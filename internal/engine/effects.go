@@ -7,7 +7,7 @@ import "fmt"
 func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 	switch e.Op {
 	case "set":
-		return setScalar(def, st, ctx, e.Target, resolveValue(ctx, e.Value))
+		return setScalar(def, st, ctx, e.Target, resolveValue(st, ctx, e.Value))
 	case "inc", "dec", "mul":
 		return arithScalar(def, st, ctx, e.Op, e.Target, e.Value)
 	case "add_item", "remove_item":
@@ -197,11 +197,21 @@ func markBeat(def *Definition, st *State, e Effect) error {
 	return nil
 }
 
-// resolveValue expands the {"$roll":"name"} value form to the stored roll result.
-func resolveValue(ctx *evalCtx, v any) any {
+// resolveValue expands special value forms to concrete values:
+//   - {"$roll":"name"} → ctx.rolls[name] (stored roll result)
+//   - {"$path":"<path>"} → resolvePath(st, ctx, path) (returns nil on error)
+//   - anything else → v unchanged
+func resolveValue(st *State, ctx *evalCtx, v any) any {
 	if m, ok := v.(map[string]any); ok {
 		if name, ok := m["$roll"].(string); ok && ctx != nil {
 			return ctx.rolls[name]
+		}
+		if p, ok := m["$path"].(string); ok {
+			val, err := resolvePath(st, ctx, p)
+			if err != nil {
+				return nil
+			}
+			return val
 		}
 	}
 	return v
@@ -309,7 +319,7 @@ func arithScalar(def *Definition, st *State, ctx *evalCtx, op, path string, rawA
 	if !ok {
 		return fmt.Errorf("%s is not numeric", path)
 	}
-	amt, ok := toFloat(resolveValue(ctx, rawAmt))
+	amt, ok := toFloat(resolveValue(st, ctx, rawAmt))
 	if !ok {
 		return fmt.Errorf("%s amount not numeric", op)
 	}

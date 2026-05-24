@@ -498,3 +498,104 @@ func TestEquipUnequip(t *testing.T) {
 		t.Fatalf("unequip left slot set: %v", st.Entities["p"].Equipped)
 	}
 }
+
+// B1: $path operands
+
+func TestPathOperandIncByWorldDay(t *testing.T) {
+	// inc entity.player.health by {"$path":"world.day"} where day=5
+	// player.health starts at 100, so should become 105 (if within max)
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"day": {Type: "int", Default: float64(1)},
+		},
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"health": {Type: "int", Default: float64(0)},
+			}},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.World["day"] = float64(5)
+	st.Entities["player"] = &Entity{Type: "character", Attrs: map[string]any{"health": float64(10)}, Inventory: map[string]int{}}
+	ctx := newEvalCtx(nil, nil)
+
+	if err := applyEffect(def, st, ctx, Effect{
+		Op:     "inc",
+		Target: "entity.player.health",
+		Value:  map[string]any{"$path": "world.day"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if st.Entities["player"].Attrs["health"] != float64(15) {
+		t.Fatalf("$path operand: got %v want 15", st.Entities["player"].Attrs["health"])
+	}
+}
+
+func TestPathOperandSetByEntityAttr(t *testing.T) {
+	// set world.day to {"$path":"entity.player.health"} (a numeric copy)
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"day": {Type: "int", Default: float64(1)},
+		},
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"health": {Type: "int", Default: float64(0)},
+			}},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.World["day"] = float64(1)
+	st.Entities["player"] = &Entity{Type: "character", Attrs: map[string]any{"health": float64(7)}, Inventory: map[string]int{}}
+	ctx := newEvalCtx(nil, nil)
+
+	if err := applyEffect(def, st, ctx, Effect{
+		Op:     "set",
+		Target: "world.day",
+		Value:  map[string]any{"$path": "entity.player.health"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if st.World["day"] != float64(7) {
+		t.Fatalf("$path operand set: got %v want 7", st.World["day"])
+	}
+}
+
+// B1: roll.<store> path in guards
+
+func TestRollStorePath(t *testing.T) {
+	st, _ := NewInstance(defForEffects(), "r", 1)
+	ctx := newEvalCtx(nil, nil)
+	ctx.rolls["atk"] = float64(15)
+
+	// guard: roll.atk gte 12 -> true
+	g := Guard{Target: "roll.atk", Op: "gte", Value: float64(12)}
+	got, err := evalGuard(st, ctx, &g)
+	if err != nil {
+		t.Fatalf("roll guard err: %v", err)
+	}
+	if !got {
+		t.Fatal("roll.atk(15) gte 12 should be true")
+	}
+
+	// guard: roll.atk gte 20 -> false
+	g2 := Guard{Target: "roll.atk", Op: "gte", Value: float64(20)}
+	got2, err := evalGuard(st, ctx, &g2)
+	if err != nil {
+		t.Fatalf("roll guard err: %v", err)
+	}
+	if got2 {
+		t.Fatal("roll.atk(15) gte 20 should be false")
+	}
+
+	// roll path without ctx -> error
+	if _, err := resolvePath(st, nil, "roll.atk"); err == nil {
+		t.Fatal("roll path without ctx should error")
+	}
+
+	// roll path with unknown store -> error
+	if _, err := resolvePath(st, ctx, "roll.missing"); err == nil {
+		t.Fatal("roll path with unknown store should error")
+	}
+}
