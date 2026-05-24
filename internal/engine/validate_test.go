@@ -246,3 +246,47 @@ func TestValidateBeatAttachedMachine(t *testing.T) {
 		t.Fatal("expected beat bound to attached machine to be rejected")
 	}
 }
+
+func TestValidateSetSpec(t *testing.T) {
+	// Valid set specs: elem string and ref.
+	good := &Definition{
+		ID: "g", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"tags":   {Type: "set", Elem: "string"},
+				"allies": {Type: "set", Elem: "ref", RefType: "character"},
+			}},
+		},
+	}
+	if errs := ValidateDefinition(good); len(errs) != 0 {
+		t.Fatalf("expected valid set spec, got %v", errs)
+	}
+
+	// Invalid: set with unknown elem.
+	bad := &Definition{
+		ID: "b", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"things": {Type: "set", Elem: "number"},
+			}},
+		},
+	}
+	errs := ValidateDefinition(bad)
+	if len(errs) == 0 {
+		t.Fatal("expected error for unknown set elem")
+	}
+
+	// Invalid: set with empty elem.
+	bad2 := &Definition{
+		ID: "b2", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"things": {Type: "set"},
+			}},
+		},
+	}
+	errs2 := ValidateDefinition(bad2)
+	if len(errs2) == 0 {
+		t.Fatal("expected error for set with empty elem")
+	}
+}

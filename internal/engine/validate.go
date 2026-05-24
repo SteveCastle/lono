@@ -220,6 +220,10 @@ func validateSpec(path string, spec VarSpec) []ValidationError {
 		if len(spec.Values) == 0 {
 			errs = append(errs, ValidationError{path, "enum requires values"})
 		}
+	case "set":
+		if spec.Elem != "string" && spec.Elem != "ref" {
+			errs = append(errs, ValidationError{path + ".elem", "set elem must be \"string\" or \"ref\", got \"" + spec.Elem + "\""})
+		}
 	default:
 		errs = append(errs, ValidationError{path, "unknown type " + spec.Type})
 		return errs
