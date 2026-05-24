@@ -599,3 +599,136 @@ func TestRollStorePath(t *testing.T) {
 		t.Fatal("roll path with unknown store should error")
 	}
 }
+
+// B2: compute op
+
+func defWithNumericWorld() *Definition {
+	lo, hi := 0.0, 1000.0
+	return &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"score":  {Type: "int", Default: float64(0), Min: &lo, Max: &hi},
+			"factor": {Type: "int", Default: float64(1)},
+		},
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"health":   {Type: "int", Default: float64(100), Min: &lo, Max: &hi},
+				"strength": {Type: "int", Default: float64(10), Min: &lo, Max: &hi},
+			}},
+		},
+	}
+}
+
+func TestComputeAllFns(t *testing.T) {
+	def := defWithNumericWorld()
+	cases := []struct {
+		fn   string
+		a    float64
+		b    float64
+		want float64
+	}{
+		{"add", 30, 20, 50},
+		{"sub", 80, 30, 50},
+		{"mul", 10, 5, 50},
+		{"div", 100, 2, 50},
+		{"min", 30, 80, 30},
+		{"max", 30, 80, 80},
+		{"mod", 103, 10, 3},
+	}
+	for _, c := range cases {
+		t.Run(c.fn, func(t *testing.T) {
+			st, _ := NewInstance(def, "r", 1)
+			st.World["score"] = float64(0)
+			ctx := newEvalCtx(nil, nil)
+			err := applyEffect(def, st, ctx, Effect{
+				Op:     "compute",
+				Target: "world.score",
+				Fn:     c.fn,
+				A:      c.a,
+				B:      c.b,
+			})
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", c.fn, err)
+			}
+			if st.World["score"] != c.want {
+				t.Fatalf("%s: got %v want %v", c.fn, st.World["score"], c.want)
+			}
+		})
+	}
+}
+
+func TestComputeUsingPathOperands(t *testing.T) {
+	// goblin.health = sub(goblin.health, player.strength)
+	lo, hi := 0.0, 200.0
+	def := &Definition{
+		ID: "g", Version: 1,
+		EntityTypes: map[string]EntityType{
+			"character": {Attributes: map[string]VarSpec{
+				"health":   {Type: "int", Default: float64(100), Min: &lo, Max: &hi},
+				"strength": {Type: "int", Default: float64(10), Min: &lo, Max: &hi},
+			}},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	st.Entities["goblin"] = &Entity{Type: "character", Attrs: map[string]any{"health": float64(80), "strength": float64(5)}, Inventory: map[string]int{}}
+	st.Entities["player"] = &Entity{Type: "character", Attrs: map[string]any{"health": float64(100), "strength": float64(15)}, Inventory: map[string]int{}}
+	ctx := newEvalCtx(nil, nil)
+
+	err := applyEffect(def, st, ctx, Effect{
+		Op:     "compute",
+		Target: "entity.goblin.health",
+		Fn:     "sub",
+		A:      map[string]any{"$path": "entity.goblin.health"},
+		B:      map[string]any{"$path": "entity.player.strength"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Entities["goblin"].Attrs["health"] != float64(65) {
+		t.Fatalf("compute sub via $path: got %v want 65", st.Entities["goblin"].Attrs["health"])
+	}
+}
+
+func TestComputeDivByZeroError(t *testing.T) {
+	def := defWithNumericWorld()
+	st, _ := NewInstance(def, "r", 1)
+	ctx := newEvalCtx(nil, nil)
+	if err := applyEffect(def, st, ctx, Effect{Op: "compute", Target: "world.score", Fn: "div", A: float64(10), B: float64(0)}); err == nil {
+		t.Fatal("expected div-by-zero error")
+	}
+}
+
+func TestComputeModByZeroError(t *testing.T) {
+	def := defWithNumericWorld()
+	st, _ := NewInstance(def, "r", 1)
+	ctx := newEvalCtx(nil, nil)
+	if err := applyEffect(def, st, ctx, Effect{Op: "compute", Target: "world.score", Fn: "mod", A: float64(10), B: float64(0)}); err == nil {
+		t.Fatal("expected mod-by-zero error")
+	}
+}
+
+func TestComputeBoundsRejection(t *testing.T) {
+	// result 200 > max 1000 is OK; result -10 < min 0 should fail
+	lo, hi := 0.0, 100.0
+	def := &Definition{
+		ID: "g", Version: 1,
+		World: map[string]VarSpec{
+			"score": {Type: "int", Default: float64(50), Min: &lo, Max: &hi},
+		},
+	}
+	st, _ := NewInstance(def, "r", 1)
+	ctx := newEvalCtx(nil, nil)
+	// sub 80 from 50 = -30 -> below min 0
+	if err := applyEffect(def, st, ctx, Effect{Op: "compute", Target: "world.score", Fn: "sub", A: float64(50), B: float64(80)}); err == nil {
+		t.Fatal("expected bounds error when result < min")
+	}
+}
+
+func TestComputeUnknownFnError(t *testing.T) {
+	def := defWithNumericWorld()
+	st, _ := NewInstance(def, "r", 1)
+	ctx := newEvalCtx(nil, nil)
+	if err := applyEffect(def, st, ctx, Effect{Op: "compute", Target: "world.score", Fn: "exp", A: float64(2), B: float64(3)}); err == nil {
+		t.Fatal("expected unknown fn error")
+	}
+}

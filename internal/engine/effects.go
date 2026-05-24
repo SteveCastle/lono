@@ -51,6 +51,8 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		}
 		delete(en.Equipped, e.Slot)
 		return nil
+	case "compute":
+		return computeOp(def, st, ctx, e)
 	case "add_to":
 		return setAddOp(def, st, ctx, e)
 	case "remove_from":
@@ -60,6 +62,62 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 	default:
 		return fmt.Errorf("unknown effect op %q", e.Op)
 	}
+}
+
+// computeOp evaluates target = A <fn> B where fn ∈ add|sub|mul|div|min|max|mod.
+func computeOp(def *Definition, st *State, ctx *evalCtx, e Effect) error {
+	spec, err := specForTarget(def, st, ctx, e.Target)
+	if err != nil {
+		return err
+	}
+	aVal := resolveValue(st, ctx, e.A)
+	bVal := resolveValue(st, ctx, e.B)
+	aF, aok := toFloat(aVal)
+	bF, bok := toFloat(bVal)
+	if !aok {
+		return fmt.Errorf("compute: operand a is not numeric (got %T)", aVal)
+	}
+	if !bok {
+		return fmt.Errorf("compute: operand b is not numeric (got %T)", bVal)
+	}
+	var result float64
+	switch e.Fn {
+	case "add":
+		result = aF + bF
+	case "sub":
+		result = aF - bF
+	case "mul":
+		result = aF * bF
+	case "div":
+		if bF == 0 {
+			return fmt.Errorf("compute: div by zero")
+		}
+		result = aF / bF
+	case "min":
+		if aF < bF {
+			result = aF
+		} else {
+			result = bF
+		}
+	case "max":
+		if aF > bF {
+			result = aF
+		} else {
+			result = bF
+		}
+	case "mod":
+		if bF == 0 {
+			return fmt.Errorf("compute: mod by zero")
+		}
+		result = float64(int64(aF) % int64(bF))
+	default:
+		return fmt.Errorf("compute: unknown fn %q (want add|sub|mul|div|min|max|mod)", e.Fn)
+	}
+	if err := ValidateValue(spec, result); err != nil {
+		return fmt.Errorf("compute %s: %w", e.Target, err)
+	}
+	writeTarget(st, ctx, e.Target, result)
+	return nil
 }
 
 // setAddOp appends a string value to a set attribute if not already present.

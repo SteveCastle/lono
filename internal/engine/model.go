@@ -211,6 +211,14 @@ type Effect struct {
 	Store string `json:"store,omitempty"`
 	// narrative
 	Beat string `json:"beat,omitempty"`
+	// compute
+	Fn string `json:"fn,omitempty"`
+	A  any    `json:"a,omitempty"`
+	B  any    `json:"b,omitempty"`
+	// if / then / else
+	When *Guard   `json:"when,omitempty"`
+	Then []Effect `json:"then,omitempty"`
+	Else []Effect `json:"else,omitempty"`
 }
 
 // StateSet is a transition's "from": a single state, a list, or "*".
