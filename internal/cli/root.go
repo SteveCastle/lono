@@ -16,7 +16,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVar(&a.gf.dataDir, "data-dir", "", "data directory (default $LONO_HOME or ./.lono)")
+	root.PersistentFlags().StringVarP(&a.gf.dataDir, "data-dir", "d", "", "data directory (default $LONO_HOME or ./.lono)")
 	root.PersistentFlags().StringVar(&a.gf.format, "format", "json", "output format: json|text")
 	root.PersistentFlags().BoolVar(&a.gf.pretty, "pretty", false, "pretty-print JSON output")
 
