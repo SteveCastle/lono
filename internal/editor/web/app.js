@@ -919,10 +919,40 @@ function mapCfg() {
   return m;
 }
 
+// refTargets: entity types that something points at via a `ref` attribute — i.e.
+// types used as a *location* (what makes a place a place, not a self-rel like
+// romance/trust between characters).
+function refTargets(d) {
+  const set = new Set();
+  for (const et of Object.values(d.entityTypes || {}))
+    for (const spec of Object.values(et.attributes || {}))
+      if (spec && spec.type === 'ref' && spec.refType) set.add(spec.refType);
+  return set;
+}
+// selfRelMap: endpoint entity type -> [relationship type names] for relationship
+// types that connect a type to itself (candidate "exit" graphs).
+function selfRelMap(d) {
+  const m = {};
+  for (const [name, rt] of Object.entries(d.relationshipTypes || {}))
+    if (rt.from && rt.from === rt.to) (m[rt.from] = m[rt.from] || []).push(name);
+  return m;
+}
+// detectPlaceType: a place is an entity type that is BOTH referenced as a location
+// AND connected to itself by some relationship (the exits). This excludes
+// character↔character relationships (romance, trust) from being read as a map.
+function detectPlaceType(d) {
+  const refs = refTargets(d), self = selfRelMap(d);
+  const candidates = Object.keys(self).filter(t => refs.has(t));
+  if (!candidates.length) return '';
+  return candidates.includes('location') ? 'location' : candidates[0];
+}
+
 function detectMapConfig() {
-  let exitType = '', placeType = '';
-  for (const [name, rt] of Object.entries(S.def.relationshipTypes || {})) {
-    if (rt.from && rt.from === rt.to) { if (name === 'exit' || !exitType) { exitType = name; placeType = rt.from; } }
+  const placeType = detectPlaceType(S.def);
+  let exitType = '';
+  if (placeType) {
+    const rels = selfRelMap(S.def)[placeType] || [];
+    exitType = rels.includes('exit') ? 'exit' : (rels[0] || '');
   }
   let moverAttr = '';
   for (const et of Object.values(S.def.entityTypes || {})) {
@@ -936,7 +966,7 @@ function detectMapConfig() {
 
 function placesCount(d) {
   let pt = d._editor && d._editor.map && d._editor.map.placeType;
-  if (!pt) for (const rt of Object.values(d.relationshipTypes || {})) if (rt.from && rt.from === rt.to) { pt = rt.from; break; }
+  if (!pt) pt = detectPlaceType(d);
   if (!pt) return 0;
   return Object.values(d.entities || {}).filter(x => x.type === pt).length;
 }
@@ -946,18 +976,51 @@ function getExits(m) { return (S.def.relationships || []).filter(r => r.type ===
 function moverTypes(m) { return Object.keys(S.def.entityTypes || {}).filter(t => { const a = (S.def.entityTypes[t].attributes || {})[m.moverAttr]; return a && a.type === 'ref'; }); }
 function movers(m) { const mt = new Set(moverTypes(m)); return Object.keys(S.def.entities || {}).filter(id => mt.has(S.def.entities[id].type)); }
 function occupantsOf(place, m) { return movers(m).filter(id => (S.def.entities[id].attrs || {})[m.moverAttr] === place); }
-function placeName(p) { return (p.e.attrs && p.e.attrs.name) || p.id; }
+function placeName(p) { return (p.e && p.e.attrs && p.e.attrs.name) || p.id; }
+function nameOf(id) { const e = S.def.entities[id]; return (e && e.attrs && e.attrs.name) || id; }
+
+function slugify(str) {
+  return (str || '').toString().toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'place';
+}
+function uniqueId(base, taken) { let id = base, i = 1; while (taken(id)) id = base + '_' + (++i); return id; }
+
+// renameEntity changes an entity's id (the JSON key) everywhere it is referenced:
+// ref attributes, relationship endpoints, map positions, and scene placements.
+function renameEntity(oldId, newId) {
+  const d = S.def;
+  if (oldId === newId || !d.entities[oldId] || d.entities[newId]) return;
+  d.entities[newId] = d.entities[oldId];
+  delete d.entities[oldId];
+  for (const e of Object.values(d.entities)) {
+    if (!e.attrs) continue;
+    for (const [k, v] of Object.entries(e.attrs)) if (v === oldId) e.attrs[k] = newId;
+  }
+  for (const r of (d.relationships || [])) { if (r.from === oldId) r.from = newId; if (r.to === oldId) r.to = newId; }
+  const e2 = d._editor || {};
+  if (e2.map && e2.map.positions && e2.map.positions[oldId]) { e2.map.positions[newId] = e2.map.positions[oldId]; delete e2.map.positions[oldId]; }
+  for (const sc of Object.values(e2.scenes || {})) {
+    if (!sc.placements) continue;
+    for (const [ent, place] of Object.entries(sc.placements)) if (place === oldId) sc.placements[ent] = newId;
+    if (sc.placements[oldId] !== undefined) { sc.placements[newId] = sc.placements[oldId]; delete sc.placements[oldId]; }
+  }
+  if (S.mapSel === oldId) S.mapSel = newId;
+}
 
 function renderMap(main) {
-  const m = mapCfg();
-  const haveType = m.placeType && (m.placeType in (S.def.entityTypes || {}));
-  const haveExit = m.exitType && (m.exitType in (S.def.relationshipTypes || {}));
+  // Detect read-only first so a game with no map doesn't get an empty _editor.map.
+  const stored = (S.def._editor && S.def._editor.map) || null;
+  const det = detectMapConfig();
+  const placeType = (stored && stored.placeType) || det.placeType;
+  const exitType = (stored && stored.exitType) || det.exitType;
+  const haveType = placeType && (placeType in (S.def.entityTypes || {}));
+  const haveExit = exitType && (exitType in (S.def.relationshipTypes || {}));
   if (!haveType || !haveExit) {
     main.appendChild(h('p', { class: 'section-blurb' },
       'A map is location entities connected by exit relationships; characters and objects are placed via a location reference. This game has no map structure yet.'));
     main.appendChild(h('button', { class: 'primary', onclick: scaffoldMap }, '+ Create map structure (location + exit)'));
     return;
   }
+  const m = mapCfg(); // persists config only now that a real map exists
   main.appendChild(subTabs('map', [['layout', 'Layout & places'], ['scenes', 'Scenes']]));
   if (S.subtab.map === 'scenes') renderScenes(main, m);
   else renderMapLayout(main, m);
@@ -1064,9 +1127,10 @@ function drawNode(p, m, svg, edgeG, exits) {
 function addPlace(m) {
   const et = S.def.entityTypes[m.placeType];
   const hasName = et && et.attributes && et.attributes.name;
-  let i = 1, id = 'place'; while (id in (S.def.entities || {})) id = 'place' + (++i);
+  const name = 'New place';
   S.def.entities = S.def.entities || {};
-  S.def.entities[id] = { type: m.placeType, attrs: hasName ? { name: 'New place' } : {} };
+  const id = uniqueId(slugify(name), x => x in S.def.entities);
+  S.def.entities[id] = { type: m.placeType, attrs: hasName ? { name } : {} };
   S.mapSel = id;
   touched(); refresh();
 }
@@ -1084,11 +1148,20 @@ function mapInspector(m, places, exits) {
   }
   const e = S.def.entities[sel];
   e.attrs = e.attrs || {};
-  box.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, sel),
+  box.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, placeName({ id: sel, e })),
+    h('span', { class: 'hint', style: 'margin-left:6px' }, sel),
     h('span', { style: 'flex:1' }),
     h('button', { class: 'tiny del', onclick: () => deletePlace(sel, m) }, '✕ delete place')));
-  if (S.def.entityTypes[m.placeType].attributes && S.def.entityTypes[m.placeType].attributes.name)
-    box.appendChild(field('name', textInput(e.attrs, 'name')));
+  const hasNameAttr = S.def.entityTypes[m.placeType].attributes && S.def.entityTypes[m.placeType].attributes.name;
+  if (hasNameAttr) {
+    const nameInp = h('input', { type: 'text', value: e.attrs.name || '' });
+    nameInp.addEventListener('input', () => { e.attrs.name = nameInp.value || undefined; touched(); });
+    nameInp.addEventListener('change', () => {
+      const newId = uniqueId(slugify(e.attrs.name), x => x !== sel && x in S.def.entities);
+      if (newId !== sel) { renameEntity(sel, newId); syncScenes(m); touched(); renderMain(); }
+    });
+    box.appendChild(field('name', nameInp, 'the JSON key follows this name (slugified) — e.g. “The Foyer” → the_foyer'));
+  }
   box.appendChild(field('description', textArea(e, 'description', 3)));
 
   // occupants
@@ -1113,7 +1186,7 @@ function mapInspector(m, places, exits) {
   for (const r of fromHere) {
     r.attrs = r.attrs || {};
     const sub = h('div', { class: 'subcard' });
-    sub.appendChild(h('div', { class: 'kv-row' }, h('span', { style: 'flex:1' }, `→ ${r.to}`),
+    sub.appendChild(h('div', { class: 'kv-row' }, h('span', { style: 'flex:1' }, `→ ${nameOf(r.to)}`),
       h('button', { class: 'tiny', onclick: () => { S.mapSel = r.to; renderMain(); } }, 'go'),
       h('button', { class: 'tiny del', onclick: () => { const i = S.def.relationships.indexOf(r); if (i >= 0) S.def.relationships.splice(i, 1); touched(); renderMain(); } }, '✕')));
     const rtAttrs = (S.def.relationshipTypes[m.exitType].attributes) || {};
@@ -1123,7 +1196,7 @@ function mapInspector(m, places, exits) {
   }
   const others = places.filter(p => p.id !== sel && !fromHere.some(r => r.to === p.id));
   if (others.length) {
-    const selBox = selectInput({ v: '' }, 'v', others.map(p => p.id), { emptyLabel: '+ add exit to…' });
+    const selBox = selectInput({ v: '' }, 'v', others.map(p => ({ value: p.id, label: placeName(p) })), { emptyLabel: '+ add exit to…' });
     selBox.addEventListener('change', () => { if (selBox.value) addExit(sel, selBox.value, m); });
     box.appendChild(h('div', { class: 'field', style: 'margin-top:6px' }, selBox));
   }
@@ -1192,11 +1265,13 @@ function sceneCard(id, scenes, m) {
   // placements
   card.appendChild(h('div', { class: 'pt-section-label' }, 'Move the cast'));
   const placesIds = getPlaces(m).map(p => p.id);
+  const placeOpts = getPlaces(m).map(p => ({ value: p.id, label: placeName(p) }));
   const moverIds = movers(m);
   for (const ent of Object.keys(sc.placements)) {
     card.appendChild(h('div', { class: 'kv-row' },
-      selectInput({ v: ent }, 'v', moverIds.length ? moverIds : [ent], { allowEmpty: false, onChange: () => {} }),
-      (() => { const sel = selectInput(sc.placements, ent, placesIds, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }); return sel; })(),
+      h('span', { class: 'key', style: 'align-self:center' }, nameOf(ent)),
+      h('span', { style: 'align-self:center;color:var(--muted)' }, '→'),
+      selectInput(sc.placements, ent, placeOpts, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }),
       h('button', { class: 'tiny del', onclick: () => { delete sc.placements[ent]; syncScenes(m); touched(); renderMain(); } }, '✕')));
   }
   const freeMovers = moverIds.filter(id => !(id in sc.placements));
