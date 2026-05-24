@@ -221,6 +221,17 @@ func ValidateDefinition(def *Definition) []ValidationError {
 		}
 	}
 
+	// Validate triggers.
+	for tName, trig := range def.Triggers {
+		path := "triggers." + tName
+		if trig.When == nil && trig.Every == 0 {
+			add(path, "trigger needs when or every")
+		}
+		for i, e := range trig.Effects {
+			errs = append(errs, validateEffect(fmt.Sprintf("%s.effects[%d]", path, i), e)...)
+		}
+	}
+
 	return errs
 }
 
@@ -251,6 +262,20 @@ func validateEffect(path string, e Effect) []ValidationError {
 		}
 		for i, sub := range e.Else {
 			errs = append(errs, validateEffect(fmt.Sprintf("%s.else[%d]", path, i), sub)...)
+		}
+	case "schedule":
+		if e.In <= 0 {
+			add(path+".in", fmt.Sprintf("schedule in must be > 0 (got %d)", e.In))
+		}
+		for i, sub := range e.Do {
+			errs = append(errs, validateEffect(fmt.Sprintf("%s.do[%d]", path, i), sub)...)
+		}
+	case "cooldown":
+		if e.Key == "" {
+			add(path+".key", "cooldown key must not be empty")
+		}
+		if e.Ticks <= 0 {
+			add(path+".ticks", fmt.Sprintf("cooldown ticks must be > 0 (got %d)", e.Ticks))
 		}
 	}
 	return errs

@@ -25,12 +25,13 @@ var canonicalKind = map[string]string{
 	"transition":  "transition",
 	"derived":     "derived",
 	"beat":        "beat",
+	"trigger":     "trigger",
 }
 
 func (a *app) newDefineCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "define", Short: "Modify parts of a game definition"}
 	for _, k := range []string{
-		"var", "entity-type", "item-type", "rel-type", "machine", "transition", "derived", "beat",
+		"var", "entity-type", "item-type", "rel-type", "machine", "transition", "derived", "beat", "trigger",
 		// aliases
 		"item", "relationship-type", "event", "branch",
 	} {
@@ -151,6 +152,9 @@ func ensureMaps(def *engine.Definition) {
 	if def.Beats == nil {
 		def.Beats = map[string]engine.Beat{}
 	}
+	if def.Triggers == nil {
+		def.Triggers = map[string]engine.Trigger{}
+	}
 }
 
 func applyDefineSet(def *engine.Definition, kind string, rest []string, raw []byte) error {
@@ -223,6 +227,12 @@ func applyDefineSet(def *engine.Definition, kind string, rest []string, raw []by
 			return err
 		}
 		def.Beats[name] = b
+	case "trigger":
+		var trig engine.Trigger
+		if err := json.Unmarshal(raw, &trig); err != nil {
+			return err
+		}
+		def.Triggers[name] = trig
 	}
 	return nil
 }
@@ -294,6 +304,8 @@ func applyDefineRm(def *engine.Definition, kind string, rest []string) error {
 		}
 		m.Transitions = out
 		def.Machines[name] = m
+	case "trigger":
+		delete(def.Triggers, name)
 	}
 	return nil
 }

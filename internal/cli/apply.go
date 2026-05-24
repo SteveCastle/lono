@@ -39,7 +39,11 @@ func (a *app) newApplyCmd() *cobra.Command {
 			if err := s.SaveState(ns); err != nil {
 				return a.emit(c, "apply", nil, coded("IO_ERROR", err, nil))
 			}
-			data, err := stateData(def, ns, map[string]any{"rolls": res.Rolls})
+			data, err := stateData(def, ns, map[string]any{
+				"rolls":    res.Rolls,
+				"fired":    res.Fired,
+				"warnings": res.Warnings,
+			})
 			if err != nil {
 				return a.emit(c, "apply", nil, coded("ERROR", err, nil))
 			}

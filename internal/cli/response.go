@@ -9,6 +9,8 @@ import (
 )
 
 // stateData builds the canonical {state, actions} payload for the LLM.
+// clock is always included as a top-level key. Callers may pass additional
+// keys via extra (e.g. rolls, fired, warnings).
 func stateData(def *engine.Definition, st *engine.State, extra map[string]any) (map[string]any, error) {
 	actions, err := engine.AvailableActions(def, st)
 	if err != nil {
@@ -20,6 +22,7 @@ func stateData(def *engine.Definition, st *engine.State, extra map[string]any) (
 		"derived":       engine.BuildDerivedView(def, st),
 		"beats":         engine.ActiveBeats(def, st),
 		"endingReached": engine.EndingsReached(def, st),
+		"clock":         st.Clock,
 	}
 	for k, v := range extra {
 		out[k] = v
