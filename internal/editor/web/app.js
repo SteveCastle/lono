@@ -51,7 +51,7 @@ const S = {
   meta: null, files: [], file: null, def: null,
   validation: [], dirty: false, section: 'game',
   subtab: { types: 'entityTypes', cast: 'entities', systems: 'triggers', map: 'layout' },
-  mapSel: null,
+  mapSel: null, mapTab: 'layout', mapZoom: 1,
   pt: null, ptSeed: 42,
 };
 
@@ -915,7 +915,9 @@ function mapCfg() {
   if (!m.placeType) m.placeType = det.placeType;
   if (!m.exitType) m.exitType = det.exitType;
   if (!m.moverAttr) m.moverAttr = det.moverAttr || 'location';
-  m.positions = m.positions || {};
+  m.rooms = m.rooms || {};
+  m.tokens = m.tokens || {};
+  if (!m.cell) m.cell = 28;
   return m;
 }
 
@@ -997,11 +999,16 @@ function renameEntity(oldId, newId) {
   }
   for (const r of (d.relationships || [])) { if (r.from === oldId) r.from = newId; if (r.to === oldId) r.to = newId; }
   const e2 = d._editor || {};
-  if (e2.map && e2.map.positions && e2.map.positions[oldId]) { e2.map.positions[newId] = e2.map.positions[oldId]; delete e2.map.positions[oldId]; }
+  const mm = e2.map || {};
+  for (const key of ['rooms', 'tokens']) {
+    if (mm[key] && mm[key][oldId] !== undefined) { mm[key][newId] = mm[key][oldId]; delete mm[key][oldId]; }
+  }
   for (const sc of Object.values(e2.scenes || {})) {
-    if (!sc.placements) continue;
-    for (const [ent, place] of Object.entries(sc.placements)) if (place === oldId) sc.placements[ent] = newId;
-    if (sc.placements[oldId] !== undefined) { sc.placements[newId] = sc.placements[oldId]; delete sc.placements[oldId]; }
+    for (const coll of ['placements', 'tokens']) {
+      const c = sc[coll]; if (!c) continue;
+      if (coll === 'placements') for (const [ent, place] of Object.entries(c)) if (place === oldId) c[ent] = newId;
+      if (c[oldId] !== undefined) { c[newId] = c[oldId]; delete c[oldId]; }
+    }
   }
   if (S.mapSel === oldId) S.mapSel = newId;
 }
@@ -1021,9 +1028,19 @@ function renderMap(main) {
     return;
   }
   const m = mapCfg(); // persists config only now that a real map exists
-  main.appendChild(subTabs('map', [['layout', 'Layout & places'], ['scenes', 'Scenes']]));
-  if (S.subtab.map === 'scenes') renderScenes(main, m);
-  else renderMapLayout(main, m);
+  ensureRooms(m);
+  const scenes = (ed().scenes = ed().scenes || {});
+  if (S.mapTab !== 'layout' && !(S.mapTab in scenes)) S.mapTab = 'layout';
+
+  // tab bar: shared Layout + one tab per scene (objects restaged) + add
+  const bar = h('div', { class: 'tabs' });
+  bar.appendChild(h('div', { class: 'tab' + (S.mapTab === 'layout' ? ' active' : ''), onclick: () => { S.mapTab = 'layout'; renderMain(); } }, 'Layout'));
+  for (const id of Object.keys(scenes)) bar.appendChild(h('div', { class: 'tab' + (S.mapTab === id ? ' active' : ''), onclick: () => { S.mapTab = id; renderMain(); } }, '▶ ' + (scenes[id].name || id)));
+  bar.appendChild(h('div', { class: 'tab', style: 'color:var(--accent)', onclick: () => addScene(m) }, '+ scene'));
+  main.appendChild(bar);
+
+  if (S.mapTab === 'layout') renderGrid(main, m, { mode: 'layout' });
+  else renderGrid(main, m, { mode: 'scene', sc: scenes[S.mapTab] });
 }
 
 function scaffoldMap() {
@@ -1031,7 +1048,7 @@ function scaffoldMap() {
   S.def.relationshipTypes = S.def.relationshipTypes || {};
   if (!S.def.entityTypes.location) S.def.entityTypes.location = { description: 'A place in the world', attributes: { name: { type: 'string' } } };
   if (!S.def.relationshipTypes.exit) S.def.relationshipTypes.exit = { description: 'A passage between places', from: 'location', to: 'location', directed: true, attributes: { direction: { type: 'string' }, locked: { type: 'bool' } } };
-  ed().map = { placeType: 'location', exitType: 'exit', moverAttr: 'location', positions: {} };
+  ed().map = { placeType: 'location', exitType: 'exit', moverAttr: 'location', rooms: {}, tokens: {}, cell: 28 };
   touched(); refresh();
 }
 
@@ -1045,79 +1062,194 @@ function mapSettings(m) {
       field('mover location attr', textInput(m, 'moverAttr', { onChange: () => { touched(); renderMain(); } }), 'the ref attr that points a character/object at a place')));
 }
 
-function ensurePositions(places, m) {
-  const cx = 480, cy = 250, R = Math.min(210, 80 + places.length * 16);
-  places.forEach((p, i) => {
-    if (!m.positions[p.id]) {
-      const a = (i / Math.max(1, places.length)) * 2 * Math.PI - Math.PI / 2;
-      m.positions[p.id] = { x: Math.round(cx + R * Math.cos(a)), y: Math.round(cy + R * Math.sin(a)) };
-    }
-  });
-}
-
-function renderMapLayout(main, m) {
+// ensureRooms gives every place a grid rectangle {x,y,w,h} (in cells) if it lacks
+// one, packed into a loose grid. Rooms are shared across all scenes.
+function ensureRooms(m) {
   const places = getPlaces(m);
-  const exits = getExits(m);
-  ensurePositions(places, m);
-
-  main.appendChild(mapSettings(m));
-  main.appendChild(h('div', { class: 'inline', style: 'margin:10px 0' },
-    h('button', { class: 'primary tiny', onclick: () => addPlace(m) }, '+ add place'),
-    h('span', { class: 'hint' }, 'drag to arrange · click a place to name it, edit its exits, and place who/what is there')));
-
-  const wrap = h('div', { style: 'display:flex;gap:14px;align-items:flex-start' });
-  const canvasBox = h('div', { style: 'flex:2;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;overflow:auto' });
-  const Hpx = 540;
-  const svg = s('svg', { width: '100%', height: Hpx, viewBox: `0 0 960 ${Hpx}`, style: 'display:block' });
-  svg.appendChild(s('defs', {}, s('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', fill: '#5a6180' }))));
-  const edgeG = s('g', {}), nodeG = s('g', {});
-  svg.appendChild(edgeG); svg.appendChild(nodeG);
-  drawEdges(edgeG, exits, m);
-  if (!places.length) edgeG.appendChild(s('text', { x: 480, y: 250, 'text-anchor': 'middle', fill: '#9aa3b2', 'font-size': 14 }, 'No places yet — click “+ add place”.'));
-  for (const p of places) nodeG.appendChild(drawNode(p, m, svg, edgeG, exits));
-  svg.addEventListener('mousedown', (ev) => { if (ev.target === svg || ev.target.tagName === 'svg') { S.mapSel = null; renderMain(); } });
-  canvasBox.appendChild(svg);
-  wrap.appendChild(canvasBox);
-  wrap.appendChild(h('div', { style: 'flex:1;min-width:280px' }, mapInspector(m, places, exits)));
-  main.appendChild(wrap);
-}
-
-function drawEdges(g, exits, m) {
-  g.innerHTML = '';
-  for (const r of exits) {
-    const a = m.positions[r.from], b = m.positions[r.to];
-    if (!a || !b) continue;
-    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
-    const x1 = a.x + ux * 64, y1 = a.y + uy * 26, x2 = b.x - ux * 66, y2 = b.y - uy * 28;
-    const locked = r.attrs && r.attrs.locked;
-    g.appendChild(s('line', { x1, y1, x2, y2, stroke: locked ? '#e2615a' : '#4a5068', 'stroke-width': 2, 'stroke-dasharray': locked ? '6 4' : '', 'marker-end': 'url(#arrow)' }));
-    const dir = (r.attrs && r.attrs.direction) || '';
-    if (dir) g.appendChild(s('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4, 'text-anchor': 'middle', fill: '#9aa3b2', 'font-size': 10 }, dir));
+  const cols = Math.max(1, Math.ceil(Math.sqrt(places.length)));
+  let i = 0;
+  for (const p of places) {
+    if (!m.rooms[p.id]) m.rooms[p.id] = { x: (i % cols) * 6 + 1, y: Math.floor(i / cols) * 5 + 1, w: 4, h: 3 };
+    i++;
   }
 }
 
-function drawNode(p, m, svg, edgeG, exits) {
-  const pos = m.positions[p.id];
-  const sel = S.mapSel === p.id;
-  const occ = occupantsOf(p.id, m);
-  const g = s('g', { transform: `translate(${pos.x},${pos.y})`, style: 'cursor:move' });
-  g.appendChild(s('rect', { x: -62, y: -24, width: 124, height: 48, rx: 9, fill: sel ? '#2f3b66' : '#222633', stroke: sel ? '#7c9cff' : '#2e3342', 'stroke-width': sel ? 2 : 1 }));
-  g.appendChild(s('text', { x: 0, y: -3, 'text-anchor': 'middle', fill: '#e6e8ee', 'font-size': 13, 'font-weight': 600 }, placeName(p)));
-  g.appendChild(s('text', { x: 0, y: 15, 'text-anchor': 'middle', fill: '#9aa3b2', 'font-size': 10 }, occ.length ? `${occ.length} here` : 'empty'));
-  let sx, sy, ox, oy, moved;
+function zoomControls() {
+  const setZ = (z) => { S.mapZoom = Math.max(0.4, Math.min(2.2, Math.round(z * 10) / 10)); renderMain(); };
+  return h('span', { class: 'inline', style: 'gap:4px' },
+    h('button', { class: 'tiny', onclick: () => setZ((S.mapZoom || 1) - 0.2) }, '−'),
+    h('span', { class: 'hint', style: 'min-width:40px;text-align:center' }, Math.round((S.mapZoom || 1) * 100) + '%'),
+    h('button', { class: 'tiny', onclick: () => setZ((S.mapZoom || 1) + 0.2) }, '+'));
+}
+
+function renderGrid(main, m, opts) {
+  const { mode, sc } = opts;
+  if (mode === 'layout') main.appendChild(mapSettings(m));
+  const tb = h('div', { class: 'inline', style: 'margin:10px 0;gap:12px' });
+  if (mode === 'layout') tb.appendChild(h('button', { class: 'primary tiny', onclick: () => addPlace(m) }, '+ add room'));
+  tb.appendChild(zoomControls());
+  tb.appendChild(h('span', { class: 'hint' }, mode === 'layout'
+    ? 'drag rooms to arrange · drag the corner to resize · drag a token to set its starting room & spot · click a room to edit it'
+    : 'drag people & props to restage them for this scene — rooms are shared across all scenes'));
+  main.appendChild(tb);
+
+  const wrap = h('div', { style: 'display:flex;gap:14px;align-items:flex-start' });
+  wrap.appendChild(buildCanvas(m, mode, sc));
+  const panel = h('div', { style: 'flex:0 0 300px' });
+  panel.appendChild(mode === 'layout' ? roomInspector(m) : sceneInspector(m, sc));
+  wrap.appendChild(panel);
+  main.appendChild(wrap);
+}
+
+function tokenColor(type) {
+  const pal = ['#7c9cff', '#4caf7d', '#d8a657', '#e2615a', '#b07cff', '#48b4c0', '#d98cae'];
+  let hns = 0; for (const c of (type || '')) hns = (hns * 31 + c.charCodeAt(0)) >>> 0;
+  return pal[hns % pal.length];
+}
+function shortLabel(s) {
+  s = s || '';
+  if (s.length <= 8) return s;
+  const parts = s.split(/\s+/);
+  if (parts.length > 1) return parts.map(p => p[0]).join('').slice(0, 4).toUpperCase();
+  return s.slice(0, 7);
+}
+function roomAt(m, cx, cy) {
+  for (const p of getPlaces(m)) { const r = m.rooms[p.id]; if (r && cx >= r.x && cx < r.x + r.w && cy >= r.y && cy < r.y + r.h) return p.id; }
+  return null;
+}
+
+// tokensForView resolves which room each character/prop is in for this view and
+// their (room-relative) cell coordinates, defaulting any that aren't placed yet.
+function tokensForView(m, mode, sc) {
+  const ids = new Set(movers(m));
+  if (mode === 'scene' && sc && sc.placements) for (const k of Object.keys(sc.placements)) ids.add(k);
+  const out = [];
+  for (const ent of ids) {
+    const e = S.def.entities[ent]; if (!e) continue;
+    const room = (mode === 'scene' && sc && sc.placements && sc.placements[ent]) || (e.attrs || {})[m.moverAttr];
+    if (!room || !m.rooms[room]) continue;
+    const coord = (mode === 'scene' && sc && sc.tokens && sc.tokens[ent]) || m.tokens[ent];
+    out.push({ ent, room, coord });
+  }
+  const counts = {};
+  for (const t of out) {
+    if (t.coord && typeof t.coord.x === 'number') { t.x = t.coord.x; t.y = t.coord.y; }
+    else { const r = m.rooms[t.room], w = Math.max(1, r.w), n = counts[t.room] || 0; t.x = n % w; t.y = 1 + Math.floor(n / w); counts[t.room] = n + 1; }
+  }
+  return out;
+}
+
+// setToken records a token's room (graph relationship) and its room-relative
+// coordinates. In a scene this writes the per-scene override; on Layout it sets
+// the entity's starting location and base coordinate.
+function setToken(ent, room, x, y, m, mode, sc) {
+  ensureMoverAttr(ent, m);
+  if (mode === 'scene') {
+    sc.placements = sc.placements || {}; sc.placements[ent] = room;
+    sc.tokens = sc.tokens || {}; sc.tokens[ent] = { x, y };
+    syncScenes(m);
+  } else {
+    const e = S.def.entities[ent]; e.attrs = e.attrs || {}; e.attrs[m.moverAttr] = room;
+    m.tokens[ent] = { x, y };
+  }
+  touched();
+}
+
+function buildCanvas(m, mode, sc) {
+  const cell = (m.cell || 28) * (S.mapZoom || 1);
+  const places = getPlaces(m);
+  let maxX = 18, maxY = 12;
+  for (const p of places) { const r = m.rooms[p.id]; if (r) { maxX = Math.max(maxX, r.x + r.w + 2); maxY = Math.max(maxY, r.y + r.h + 2); } }
+  const W = maxX * cell, H = maxY * cell;
+  const box = h('div', { style: 'flex:1;min-width:0;max-height:660px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px' });
+  const svg = s('svg', { width: W, height: H, style: 'display:block' });
+
+  const grid = s('g', {});
+  for (let x = 0; x <= maxX; x++) grid.appendChild(s('line', { x1: x * cell, y1: 0, x2: x * cell, y2: H, stroke: '#1d212b', 'stroke-width': 1 }));
+  for (let y = 0; y <= maxY; y++) grid.appendChild(s('line', { x1: 0, y1: y * cell, x2: W, y2: y * cell, stroke: '#1d212b', 'stroke-width': 1 }));
+  svg.appendChild(grid);
+
+  const edgeG = s('g', {}); svg.appendChild(edgeG);
+  const drawEdges = () => {
+    edgeG.innerHTML = '';
+    for (const r of getExits(m)) {
+      const a = m.rooms[r.from], b = m.rooms[r.to]; if (!a || !b) continue;
+      const ax = (a.x + a.w / 2) * cell, ay = (a.y + a.h / 2) * cell, bx = (b.x + b.w / 2) * cell, by = (b.y + b.h / 2) * cell;
+      const locked = r.attrs && r.attrs.locked;
+      edgeG.appendChild(s('line', { x1: ax, y1: ay, x2: bx, y2: by, stroke: locked ? '#e2615a' : '#5a6180', 'stroke-width': 2, 'stroke-dasharray': locked ? '6 4' : '' }));
+      const dir = (r.attrs && r.attrs.direction) || '';
+      if (dir) edgeG.appendChild(s('text', { x: (ax + bx) / 2, y: (ay + by) / 2 - 4, 'text-anchor': 'middle', fill: '#9aa3b2', 'font-size': 10 }, dir));
+    }
+  };
+  drawEdges();
+
+  const tokens = tokensForView(m, mode, sc);
+  const byRoom = {};
+  for (const t of tokens) (byRoom[t.room] = byRoom[t.room] || []).push(t);
+
+  for (const p of places) {
+    const r = m.rooms[p.id]; if (!r) continue;
+    const seld = mode === 'layout' && S.mapSel === p.id;
+    const g = s('g', { transform: `translate(${r.x * cell},${r.y * cell})` });
+    const rect = s('rect', { x: 0, y: 0, width: r.w * cell, height: r.h * cell, rx: 6, fill: seld ? '#222b44' : '#171a22', stroke: seld ? '#7c9cff' : '#2e3342', 'stroke-width': seld ? 2 : 1, style: mode === 'layout' ? 'cursor:move' : 'cursor:pointer' });
+    g.appendChild(rect);
+    g.appendChild(s('text', { x: 7, y: 16, fill: '#e6e8ee', 'font-size': 12, 'font-weight': 600, style: 'pointer-events:none' }, placeName(p)));
+    for (const t of (byRoom[p.id] || [])) g.appendChild(drawToken(t, m, mode, sc, cell));
+    if (mode === 'layout') {
+      const hd = s('rect', { x: r.w * cell - 11, y: r.h * cell - 11, width: 11, height: 11, fill: '#7c9cff', style: 'cursor:nwse-resize' });
+      hd.addEventListener('mousedown', (ev) => {
+        ev.stopPropagation(); ev.preventDefault();
+        const sx = ev.clientX, sy = ev.clientY, ow = r.w, oh = r.h;
+        const mm = (e2) => {
+          r.w = Math.max(2, ow + Math.round((e2.clientX - sx) / cell)); r.h = Math.max(2, oh + Math.round((e2.clientY - sy) / cell));
+          rect.setAttribute('width', r.w * cell); rect.setAttribute('height', r.h * cell);
+          hd.setAttribute('x', r.w * cell - 11); hd.setAttribute('y', r.h * cell - 11); drawEdges();
+        };
+        const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); touched(); renderMain(); };
+        document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
+      });
+      g.appendChild(hd);
+      rect.addEventListener('mousedown', (ev) => {
+        ev.stopPropagation(); ev.preventDefault();
+        const sx = ev.clientX, sy = ev.clientY, ox = r.x, oy = r.y; let moved = false;
+        const mm = (e2) => {
+          if (Math.abs(e2.clientX - sx) + Math.abs(e2.clientY - sy) > 3) moved = true;
+          r.x = Math.max(0, ox + Math.round((e2.clientX - sx) / cell)); r.y = Math.max(0, oy + Math.round((e2.clientY - sy) / cell));
+          g.setAttribute('transform', `translate(${r.x * cell},${r.y * cell})`); drawEdges();
+        };
+        const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (moved) { touched(); renderMain(); } else { S.mapSel = p.id; renderMain(); } };
+        document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
+      });
+    }
+    svg.appendChild(g);
+  }
+  box.appendChild(svg);
+  return box;
+}
+
+function drawToken(t, m, mode, sc, cell) {
+  const e = S.def.entities[t.ent];
+  const g = s('g', { transform: `translate(${t.x * cell},${t.y * cell})`, style: 'cursor:grab' });
+  const pad = cell * 0.06, w = cell * 0.88, hgt = cell * 0.66;
+  g.appendChild(s('rect', { x: pad, y: cell * 0.16, width: w, height: hgt, rx: 4, fill: tokenColor(e.type), stroke: '#0d0f14', 'stroke-width': 1 }));
+  g.appendChild(s('text', { x: pad + w / 2, y: cell * 0.16 + hgt / 2 + 3, 'text-anchor': 'middle', fill: '#0d0f14', 'font-size': Math.max(8, cell * 0.26), 'font-weight': 700, style: 'pointer-events:none' }, shortLabel(nameOf(t.ent))));
+  g.appendChild(s('title', {}, `${nameOf(t.ent)} (${e.type})`));
   g.addEventListener('mousedown', (ev) => {
     ev.stopPropagation(); ev.preventDefault();
-    sx = ev.clientX; sy = ev.clientY; ox = pos.x; oy = pos.y; moved = false;
-    const sc = (svg.clientWidth / 960) || 1;
+    const sx = ev.clientX, sy = ev.clientY, bx = t.x, by = t.y; let cx = bx, cy = by, moved = false;
     const mm = (e2) => {
-      pos.x = Math.round(ox + (e2.clientX - sx) / sc); pos.y = Math.round(oy + (e2.clientY - sy) / sc);
+      cx = bx + (e2.clientX - sx) / cell; cy = by + (e2.clientY - sy) / cell;
       if (Math.abs(e2.clientX - sx) + Math.abs(e2.clientY - sy) > 3) moved = true;
-      g.setAttribute('transform', `translate(${pos.x},${pos.y})`);
-      drawEdges(edgeG, exits, m);
+      g.setAttribute('transform', `translate(${cx * cell},${cy * cell})`);
     };
     const mu = () => {
       document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu);
-      if (moved) touched(); else { S.mapSel = p.id; renderMain(); }
+      if (!moved) return;
+      const room0 = m.rooms[t.room]; const absX = room0.x + cx, absY = room0.y + cy;
+      const target = roomAt(m, absX + 0.4, absY + 0.3) || t.room; const tr = m.rooms[target];
+      let rx = Math.round(absX - tr.x), ry = Math.round(absY - tr.y);
+      rx = Math.max(0, Math.min(tr.w - 1, rx)); ry = Math.max(0, Math.min(tr.h - 1, ry));
+      setToken(t.ent, target, rx, ry, m, mode, sc); renderMain();
     };
     document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
   });
@@ -1135,7 +1267,9 @@ function addPlace(m) {
   touched(); refresh();
 }
 
-function mapInspector(m, places, exits) {
+function roomInspector(m) {
+  const places = getPlaces(m);
+  const exits = getExits(m);
   const box = h('div', {});
   const sel = S.mapSel;
   if (!sel || !S.def.entities[sel] || S.def.entities[sel].type !== m.placeType) {
@@ -1261,99 +1395,93 @@ function deletePlace(id, m) {
   delete S.def.entities[id];
   S.def.relationships = (S.def.relationships || []).filter(r => !(r.type === m.exitType && (r.from === id || r.to === id)));
   for (const eid of Object.keys(S.def.entities)) { const a = S.def.entities[eid].attrs || {}; if (a[m.moverAttr] === id) delete a[m.moverAttr]; }
-  if (ed().map.positions) delete ed().map.positions[id];
+  if (m.rooms) delete m.rooms[id];
+  if (m.tokens) delete m.tokens[id];
+  for (const sc of Object.values(ed().scenes || {})) {
+    if (sc.placements) for (const [ent, place] of Object.entries(sc.placements)) if (place === id) delete sc.placements[ent];
+  }
+  syncScenes(m);
   if (S.mapSel === id) S.mapSel = null;
   touched(); refresh();
 }
 
 // ---- Scenes ----
-function renderScenes(main, m) {
+function addScene(m) {
   const scenes = (ed().scenes = ed().scenes || {});
-  main.appendChild(h('p', { class: 'section-blurb' },
-    'A scene repositions the cast (and marks a beat / journal note) when the story reaches a moment. Each scene compiles to a trigger that fires when a machine enters a chosen state.'));
-  const names = Object.keys(scenes);
-  if (!names.length) main.appendChild(h('div', { class: 'empty' }, 'No scenes yet.'));
-  for (const id of names) main.appendChild(sceneCard(id, scenes, m));
-  main.appendChild(h('button', { class: 'primary add-btn', onclick: () => {
-    let i = 1, nk = 'scene'; while (nk in scenes) nk = 'scene' + (++i);
-    scenes[nk] = { name: 'New scene', placements: {}, once: true };
-    syncScenes(m); touched(); renderMain();
-  } }, '+ new scene'));
+  let i = 1, nk = 'scene'; while (nk in scenes) nk = 'scene' + (++i);
+  scenes[nk] = { name: 'New scene', placements: {}, tokens: {}, once: true };
+  syncScenes(m); touched(); S.mapTab = nk; renderMain();
 }
 
-function sceneCard(id, scenes, m) {
-  const sc = scenes[id];
+// sceneInspector is the side panel for a scene tab: when it fires, plus the
+// non-spatial staging (items, lore, beat, journal). Token positions are set by
+// dragging on the shared map; this panel covers everything else.
+function sceneInspector(m, sc) {
+  const scenes = ed().scenes; const id = S.mapTab;
   sc.placements = sc.placements || {};
-  const card = h('div', { class: 'card' });
-  card.appendChild(h('div', { class: 'card-head' }, renameInput(scenes, id, () => { syncScenes(m); renderMain(); }),
+  const box = h('div', {});
+  box.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Scene'),
     h('span', { style: 'flex:1' }),
-    h('button', { class: 'tiny del', onclick: () => { delete scenes[id]; syncScenes(m); touched(); renderMain(); } }, '✕ delete')));
-  card.appendChild(field('name', textInput(sc, 'name', { onChange: () => { syncScenes(m); touched(); } })));
+    h('button', { class: 'tiny del', onclick: () => { delete scenes[id]; syncScenes(m); touched(); S.mapTab = 'layout'; renderMain(); } }, '✕ delete scene')));
+  const nameInp = h('input', { type: 'text', value: sc.name || '' });
+  nameInp.addEventListener('input', () => { sc.name = nameInp.value; syncScenes(m); touched(); });
+  nameInp.addEventListener('change', () => renderMain());
+  box.appendChild(field('name', nameInp));
 
-  // when: machine enters state
-  card.appendChild(h('div', { class: 'pt-section-label' }, 'Fires when'));
-  card.appendChild(h('div', { class: 'row' },
+  box.appendChild(h('div', { class: 'pt-section-label' }, 'Fires when'));
+  box.appendChild(h('div', { class: 'row' },
     field('machine', selectInput(sc, 'machine', machineNames(), { onChange: () => { syncScenes(m); touched(); renderMain(); } })),
     field('enters state', selectInput(sc, 'state', stateNames(sc.machine), { onChange: () => { syncScenes(m); touched(); } }))));
-  card.appendChild(h('div', { class: 'field' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = sc.once !== false; c.addEventListener('change', () => { sc.once = c.checked; syncScenes(m); touched(); }); return h('label', { class: 'checkbox' }, c, 'fire once'); })()));
-  if (!sc.machine || !sc.state) card.appendChild(h('div', { class: 'hint' }, 'pick a machine + state so the scene has something to fire on'));
+  box.appendChild(h('div', { class: 'field' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = sc.once !== false; c.addEventListener('change', () => { sc.once = c.checked; syncScenes(m); touched(); }); return h('label', { class: 'checkbox' }, c, 'fire once'); })()));
+  if (!sc.machine || !sc.state) box.appendChild(h('div', { class: 'hint' }, 'pick a machine + state so the scene fires'));
 
-  // placements (characters & props — anything that can hold a location ref)
-  card.appendChild(h('div', { class: 'pt-section-label' }, 'Position characters & props'));
+  // cast & props — positioned by dragging; offer to bring in anyone not shown
+  box.appendChild(h('div', { class: 'pt-section-label' }, 'Cast & props'));
+  box.appendChild(h('div', { class: 'hint' }, 'drag tokens on the map to restage them for this scene. Everyone starts where the Layout places them.'));
   const placesIds = getPlaces(m).map(p => p.id);
-  const placeOpts = getPlaces(m).map(p => ({ value: p.id, label: placeName(p) }));
-  for (const ent of Object.keys(sc.placements)) {
-    card.appendChild(h('div', { class: 'kv-row' },
-      h('span', { class: 'key', style: 'align-self:center' }, nameOf(ent)),
-      h('span', { style: 'align-self:center;color:var(--muted)' }, '→'),
-      selectInput(sc.placements, ent, placeOpts, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }),
-      h('button', { class: 'tiny del', onclick: () => { delete sc.placements[ent]; syncScenes(m); touched(); renderMain(); } }, '✕')));
-  }
-  const freeCandidates = Object.keys(S.def.entities).filter(id => S.def.entities[id].type !== m.placeType && !(id in sc.placements));
-  if (freeCandidates.length && placesIds.length) {
-    const selBox = selectInput({ v: '' }, 'v', freeCandidates.map(id => ({ value: id, label: nameOf(id) })), { emptyLabel: '+ position a character, prop, or object…' });
+  const shown = new Set(tokensForView(m, 'scene', sc).map(t => t.ent));
+  const cand = Object.keys(S.def.entities).filter(eid => S.def.entities[eid].type !== m.placeType && !shown.has(eid));
+  if (cand.length && placesIds.length) {
+    const selBox = selectInput({ v: '' }, 'v', cand.map(eid => ({ value: eid, label: nameOf(eid) })), { emptyLabel: '+ bring someone/something into frame…' });
     selBox.addEventListener('change', () => { if (selBox.value) { ensureMoverAttr(selBox.value, m); sc.placements[selBox.value] = placesIds[0]; syncScenes(m); touched(); renderMain(); } });
-    card.appendChild(h('div', { class: 'field', style: 'margin-top:6px' }, selBox));
+    box.appendChild(h('div', { class: 'field', style: 'margin-top:6px' }, selBox));
   }
-  card.appendChild(h('button', { class: 'tiny', onclick: () => { for (const p of getPlaces(m)) for (const occ of occupantsOf(p.id, m)) sc.placements[occ] = p.id; syncScenes(m); touched(); renderMain(); } }, 'capture current positions'));
 
   // items: add an item type into an entity's (or place's) inventory
-  card.appendChild(h('div', { class: 'pt-section-label' }, 'Place items'));
+  box.appendChild(h('div', { class: 'pt-section-label' }, 'Place items'));
   sc.items = sc.items || [];
   const itemIds = itemTypeNames();
-  const holderOpts = Object.keys(S.def.entities).map(id => ({ value: id, label: nameOf(id) }));
-  if (!itemIds.length) card.appendChild(h('div', { class: 'hint' }, 'define item types (Types → Item types) to place items'));
+  const holderOpts = Object.keys(S.def.entities).map(eid => ({ value: eid, label: nameOf(eid) }));
+  if (!itemIds.length) box.appendChild(h('div', { class: 'hint' }, 'define item types (Types → Item types) to place items'));
   else {
     sc.items.forEach((it, i) => {
-      const n = h('input', { type: 'number', value: it.count || 1, style: 'max-width:70px' });
+      const n = h('input', { type: 'number', value: it.count || 1, style: 'max-width:64px' });
       n.addEventListener('input', () => { it.count = Number(n.value || 1); syncScenes(m); touched(); });
-      card.appendChild(h('div', { class: 'kv-row' },
+      box.appendChild(h('div', { class: 'kv-row' },
         selectInput(it, 'item', itemIds, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }),
         h('span', { style: 'align-self:center;color:var(--muted)' }, '→'),
         selectInput(it, 'holder', holderOpts, { allowEmpty: false, onChange: () => { syncScenes(m); touched(); } }),
         n,
         h('button', { class: 'tiny del', onclick: () => { sc.items.splice(i, 1); syncScenes(m); touched(); renderMain(); } }, '✕')));
     });
-    card.appendChild(h('button', { class: 'tiny add-btn', onclick: () => { sc.items.push({ item: itemIds[0], holder: Object.keys(S.def.entities)[0], count: 1 }); syncScenes(m); touched(); renderMain(); } }, '+ place an item'));
+    box.appendChild(h('button', { class: 'tiny add-btn', onclick: () => { sc.items.push({ item: itemIds[0], holder: Object.keys(S.def.entities)[0], count: 1 }); syncScenes(m); touched(); renderMain(); } }, '+ place an item'));
   }
 
   // lore trigger: reveal lore entries when the scene fires
-  card.appendChild(h('div', { class: 'pt-section-label' }, 'Reveal lore (lore trigger)'));
+  box.appendChild(h('div', { class: 'pt-section-label' }, 'Reveal lore (lore trigger)'));
   sc.lore = sc.lore || [];
   const loreIds = keys(S.def.lore);
-  if (!loreIds.length) card.appendChild(h('div', { class: 'hint' }, 'no lore yet — add entries in the Lore section'));
+  if (!loreIds.length) box.appendChild(h('div', { class: 'hint' }, 'no lore yet — add entries in the Lore section'));
   for (const lid of loreIds) {
     const cb = h('input', { type: 'checkbox' }); cb.checked = sc.lore.includes(lid);
     cb.addEventListener('change', () => { if (cb.checked) { if (!sc.lore.includes(lid)) sc.lore.push(lid); } else sc.lore = sc.lore.filter(x => x !== lid); syncScenes(m); touched(); });
-    card.appendChild(h('div', {}, h('label', { class: 'checkbox' }, cb, (S.def.lore[lid].title || lid))));
+    box.appendChild(h('div', {}, h('label', { class: 'checkbox' }, cb, (S.def.lore[lid].title || lid))));
   }
 
-  // narrative
-  card.appendChild(h('div', { class: 'pt-section-label' }, 'On entry (optional)'));
-  card.appendChild(h('div', { class: 'row' },
-    field('mark beat', selectInput(sc, 'markBeat', keys(S.def.beats), { onChange: () => { syncScenes(m); touched(); } })),
-    field('journal note', textInput(sc, 'record', { onChange: () => { syncScenes(m); touched(); } }))));
-  return card;
+  box.appendChild(h('div', { class: 'pt-section-label' }, 'On entry (optional)'));
+  box.appendChild(field('mark beat', selectInput(sc, 'markBeat', keys(S.def.beats), { onChange: () => { syncScenes(m); touched(); } })));
+  box.appendChild(field('journal note', textInput(sc, 'record', { onChange: () => { syncScenes(m); touched(); } })));
+  return box;
 }
 
 function compileScene(id, sc, m) {
