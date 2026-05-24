@@ -179,6 +179,38 @@ func TestSetInstanceNotFound(t *testing.T) {
 	}
 }
 
+// TestSetValidatedFiresTriggers confirms that a validated runtime set settles
+// reactive triggers and surfaces the fired trigger ids in the response.
+func TestSetValidatedFiresTriggers(t *testing.T) {
+	dir := t.TempDir()
+	seedAlarmGame(t, dir)
+	runCLI(t, dir, "play", "start", "ag", "--id", "sf1", "--seed", "1")
+
+	env, _ := runCLI(t, dir, "set", "sf1", "world/alarm", "--value", "true")
+	if !env.OK {
+		t.Fatalf("set world/alarm=true failed: %+v", env.Error)
+	}
+	data := env.Data.(map[string]any)
+	fired, _ := data["fired"].([]any)
+	if !containsStr(fired, "raise") {
+		t.Fatalf("expected fired to contain trigger \"raise\", got %v", data["fired"])
+	}
+	st := data["state"].(map[string]any)
+	if st["world"].(map[string]any)["lockdown"] != true {
+		t.Fatalf("expected lockdown=true after trigger fired, got %v", st["world"].(map[string]any)["lockdown"])
+	}
+}
+
+// containsStr reports whether xs (a decoded JSON array) contains the string s.
+func containsStr(xs []any, s string) bool {
+	for _, x := range xs {
+		if str, ok := x.(string); ok && str == s {
+			return true
+		}
+	}
+	return false
+}
+
 // TestSetEmptyStringValue confirms that --value "" sets the attribute to an
 // empty string (not treated as "no value provided").
 func TestSetEmptyStringValue(t *testing.T) {

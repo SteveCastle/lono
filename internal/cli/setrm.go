@@ -90,14 +90,18 @@ func (a *app) newSetCmd() *cobra.Command {
 				}
 				return a.emit(c, "set", data, nil)
 			}
-			ns, _, err := engine.ApplyOps(def, st, ops)
+			ns, res, err := engine.ApplyOps(def, st, ops)
 			if err != nil {
 				return a.emit(c, "set", nil, coded("ACTION_FAILED", err, nil))
 			}
 			if err := s.SaveState(ns); err != nil {
 				return a.emit(c, "set", nil, coded("IO_ERROR", err, nil))
 			}
-			data, err := stateData(def, ns, nil)
+			data, err := stateData(def, ns, map[string]any{
+				"clock":    ns.Clock,
+				"fired":    res.Fired,
+				"warnings": res.Warnings,
+			})
 			if err != nil {
 				return a.emit(c, "set", nil, coded("ERROR", err, nil))
 			}
@@ -160,14 +164,18 @@ func (a *app) newRmCmd() *cobra.Command {
 				}
 				return a.emit(c, "rm", data, nil)
 			}
-			ns, _, err := engine.ApplyOps(def, st, ops)
+			ns, res, err := engine.ApplyOps(def, st, ops)
 			if err != nil {
 				return a.emit(c, "rm", nil, coded("ACTION_FAILED", err, nil))
 			}
 			if err := s.SaveState(ns); err != nil {
 				return a.emit(c, "rm", nil, coded("IO_ERROR", err, nil))
 			}
-			data, err := stateData(def, ns, nil)
+			data, err := stateData(def, ns, map[string]any{
+				"clock":    ns.Clock,
+				"fired":    res.Fired,
+				"warnings": res.Warnings,
+			})
 			if err != nil {
 				return a.emit(c, "rm", nil, coded("ERROR", err, nil))
 			}

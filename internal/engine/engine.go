@@ -256,6 +256,16 @@ func transitionFrom(m Machine, action, cur string) (Transition, bool) {
 	return Transition{}, false
 }
 
+// SettleInstance runs the reactive trigger fixpoint on st in place (used after a
+// raw --force write so consequences still react). Returns fired triggers + warnings.
+func SettleInstance(def *Definition, st *State) *ActionResult {
+	ctx := newEvalCtx(nil, &RNG{state: st.RNGState})
+	ctx.def = def
+	res := Settle(def, st, ctx)
+	st.RNGState = ctx.rng.state
+	return &ActionResult{Fired: res.Fired, Warnings: res.Warnings}
+}
+
 // ApplyOps applies an ad-hoc list of effect ops atomically (the "send updates"
 // path). The input state is never mutated.
 func ApplyOps(def *Definition, st *State, ops []Effect) (*State, *ActionResult, error) {
