@@ -1,0 +1,73 @@
+{
+  "id": "manor",
+  "name": "Ashford Manor",
+  "version": 1,
+  "description": "A geography golden: locations, exits, a player, move op, spatial queries.",
+  "entityTypes": {
+    "location": {
+      "attributes": {
+        "name": {"type": "string"}
+      }
+    },
+    "person": {
+      "attributes": {
+        "name":     {"type": "string"},
+        "location": {"type": "ref", "refType": "location"}
+      }
+    }
+  },
+  "relationshipTypes": {
+    "exit": {
+      "from":     "location",
+      "to":       "location",
+      "directed": true,
+      "attributes": {
+        "direction": {"type": "string"}
+      }
+    }
+  },
+  "derived": {
+    "exits_here": {
+      "over":   "relationships",
+      "where":  {"type": "exit", "from": {"$path": "entity.player.location"}},
+      "reduce": "list",
+      "intent": "destination ids reachable from the player's current location"
+    },
+    "here": {
+      "over":  "entities",
+      "where": {
+        "type":  "person",
+        "attrs": [{"attr": "location", "op": "eq", "value": {"$path": "entity.player.location"}}]
+      },
+      "reduce": "list",
+      "intent": "person entity ids sharing the player's current location"
+    }
+  },
+  "entities": {
+    "study": {
+      "type":        "location",
+      "attrs":       {"name": "The Study"},
+      "description": "Tall bookshelves line every wall; a mahogany desk sits beneath the dusty window."
+    },
+    "hall": {
+      "type":        "location",
+      "attrs":       {"name": "The Great Hall"},
+      "description": "A vaulted ceiling soars overhead, hung with faded tapestries."
+    },
+    "garden": {
+      "type":        "location",
+      "attrs":       {"name": "The Walled Garden"},
+      "description": "Overgrown rose-beds surround a cracked stone fountain."
+    },
+    "player": {
+      "type":  "person",
+      "attrs": {"name": "The Player", "location": "study"}
+    }
+  },
+  "relationships": [
+    {"type": "exit", "from": "study",  "to": "hall",   "attrs": {"direction": "north"}},
+    {"type": "exit", "from": "hall",   "to": "study",  "attrs": {"direction": "south"}},
+    {"type": "exit", "from": "hall",   "to": "garden", "attrs": {"direction": "east"}},
+    {"type": "exit", "from": "garden", "to": "hall",   "attrs": {"direction": "west"}}
+  ]
+}
