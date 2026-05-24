@@ -240,6 +240,9 @@ type Effect struct {
 	// cooldown: set a named cooldown expiring in Ticks ticks
 	Key   string `json:"key,omitempty"`
 	Ticks int    `json:"ticks,omitempty"`
+	// record: append a narrative journal entry
+	Text string   `json:"text,omitempty"`
+	Tags []string `json:"tags,omitempty"`
 }
 
 // StateSet is a transition's "from": a single state, a list, or "*".

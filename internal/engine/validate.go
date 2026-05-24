@@ -277,6 +277,10 @@ func validateEffect(path string, e Effect) []ValidationError {
 		if e.Ticks <= 0 {
 			add(path+".ticks", fmt.Sprintf("cooldown ticks must be > 0 (got %d)", e.Ticks))
 		}
+	case "record":
+		if e.Text == "" {
+			add(path+".text", "record text must not be empty")
+		}
 	}
 	return errs
 }

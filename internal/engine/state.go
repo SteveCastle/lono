@@ -25,6 +25,17 @@ type State struct {
 	Cooldowns    map[string]int  `json:"cooldowns,omitempty"`
 	TriggerArmed map[string]bool `json:"triggerArmed,omitempty"`
 	TriggerFired map[string]bool `json:"triggerFired,omitempty"`
+	// v3 narrative journal
+	Log []LogEntry `json:"log,omitempty"`
+}
+
+// LogEntry is a single narrative journal record appended by the record effect.
+type LogEntry struct {
+	Seq   int       `json:"seq"`
+	Clock int       `json:"clock"`
+	TS    time.Time `json:"ts"`
+	Tags  []string  `json:"tags,omitempty"`
+	Text  string    `json:"text"`
 }
 
 // ScheduledItem holds effects to apply at a specific clock tick.

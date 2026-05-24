@@ -1,6 +1,9 @@
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // applyEffect mutates st in place per a single op. Callers run effects against a
 // clone and discard it on error to preserve atomicity.
@@ -65,6 +68,8 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		return scheduleOp(st, e)
 	case "cooldown":
 		return cooldownOp(st, e)
+	case "record":
+		return recordOp(st, e)
 	default:
 		return fmt.Errorf("unknown effect op %q", e.Op)
 	}
@@ -94,6 +99,21 @@ func cooldownOp(st *State, e Effect) error {
 		st.Cooldowns = map[string]int{}
 	}
 	st.Cooldowns[e.Key] = st.Clock + e.Ticks
+	return nil
+}
+
+// recordOp appends a LogEntry to st.Log. Text must be non-empty.
+func recordOp(st *State, e Effect) error {
+	if e.Text == "" {
+		return fmt.Errorf("record: text must not be empty")
+	}
+	st.Log = append(st.Log, LogEntry{
+		Seq:   len(st.Log) + 1,
+		Clock: st.Clock,
+		TS:    time.Now().UTC(),
+		Tags:  e.Tags,
+		Text:  e.Text,
+	})
 	return nil
 }
 
