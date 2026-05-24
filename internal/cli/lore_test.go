@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,69 @@ func TestDefineLore(t *testing.T) {
 	}
 	if _, exists := lore2["locket"]; !exists {
 		t.Error("locket should still exist")
+	}
+}
+
+// TestDiscoverViaApply verifies that the discover op works via `apply` and
+// that discoveredLore appears in the output.
+func TestDiscoverViaApply(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create game with a lore entry and a machine to hang a play session on.
+	runCLI(t, dir, "game", "create", "g")
+	runCLI(t, dir, "define", "lore", "set", "g", "founding",
+		"--spec", `{"title":"The Founding","text":"Built in Year 312."}`)
+	runCLI(t, dir, "define", "machine", "set", "g", "arc",
+		"--spec", `{"initial":"start","states":["start"]}`)
+
+	// Start a play session.
+	env, _ := runCLI(t, dir, "play", "start", "g", "--id", "r1", "--seed", "1")
+	if !env.OK {
+		t.Fatalf("play start failed: %+v", env.Error)
+	}
+
+	// Apply discover.
+	env2, _ := runCLI(t, dir, "apply", "r1",
+		"--ops", `[{"op":"discover","lore":"founding"}]`)
+	if !env2.OK {
+		t.Fatalf("apply discover failed: %+v", env2.Error)
+	}
+
+	// discoveredLore should appear at top-level in the response data.
+	b, _ := json.Marshal(env2.Data)
+	var data map[string]any
+	_ = json.Unmarshal(b, &data)
+	dl, ok := data["discoveredLore"]
+	if !ok {
+		t.Fatal("discoveredLore missing from apply response")
+	}
+	arr, ok := dl.([]any)
+	if !ok || len(arr) != 1 || arr[0] != "founding" {
+		t.Fatalf("discoveredLore = %v, want [founding]", dl)
+	}
+
+	// Apply discover again (idempotent) — should still be 1 entry.
+	env3, _ := runCLI(t, dir, "apply", "r1",
+		"--ops", `[{"op":"discover","lore":"founding"}]`)
+	if !env3.OK {
+		t.Fatalf("apply discover (idempotent) failed: %+v", env3.Error)
+	}
+	b3, _ := json.Marshal(env3.Data)
+	var data3 map[string]any
+	_ = json.Unmarshal(b3, &data3)
+	arr3 := data3["discoveredLore"].([]any)
+	if len(arr3) != 1 {
+		t.Fatalf("after idempotent discover, discoveredLore = %v, want [founding]", arr3)
+	}
+
+	// Apply discover with unknown lore id — should fail.
+	env4, _ := runCLI(t, dir, "apply", "r1",
+		"--ops", `[{"op":"discover","lore":"no_such"}]`)
+	if env4.OK {
+		t.Fatal("expected failure for unknown lore id")
+	}
+	if !strings.Contains(env4.Error.Message, "no_such") {
+		t.Fatalf("error should mention id, got: %v", env4.Error.Message)
 	}
 }
 
