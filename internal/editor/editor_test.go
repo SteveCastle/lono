@@ -160,6 +160,45 @@ func TestSaveAndValidate(t *testing.T) {
 	}
 }
 
+// The Map/Scenes UI stashes editor-only data under a top-level "_editor" key.
+// The engine must ignore it: it survives a save round-trip and never affects
+// validation or playtest.
+func TestEditorMetadataPassthrough(t *testing.T) {
+	srv, dir := newTestServer(t)
+	doJSON(t, "POST", srv.URL+"/api/games", map[string]any{"id": "g"})
+
+	withMeta := map[string]any{
+		"id": "g", "name": "G", "version": 1,
+		"machines": map[string]any{
+			"arc": map[string]any{
+				"initial": "start", "states": []string{"start", "end"},
+				"stateMeta":   map[string]any{"end": map[string]any{"terminal": true, "ending": true}},
+				"transitions": []any{map[string]any{"id": "finish", "from": "start", "to": "end"}},
+			},
+		},
+		"_editor": map[string]any{
+			"map":    map[string]any{"placeType": "location", "positions": map[string]any{"a": map[string]any{"x": 1, "y": 2}}},
+			"scenes": map[string]any{"s1": map[string]any{"name": "opening"}},
+		},
+	}
+	if status, m := doJSON(t, "PUT", srv.URL+"/api/games/g.lono.json", map[string]any{"definition": withMeta}); status != 200 {
+		t.Fatalf("save status %d", status)
+	} else if v, _ := m["validation"].([]any); len(v) != 0 {
+		t.Errorf("definition with _editor should validate clean, got %v", v)
+	}
+
+	// the saved file still carries _editor verbatim
+	b, _ := os.ReadFile(filepath.Join(dir, "g.lono.json"))
+	if !strings.Contains(string(b), "_editor") || !strings.Contains(string(b), "opening") {
+		t.Errorf("_editor not persisted: %s", b)
+	}
+
+	// and it plays without complaint
+	if status, _ := doJSON(t, "POST", srv.URL+"/api/playtest", map[string]any{"definition": withMeta}); status != 200 {
+		t.Errorf("playtest with _editor: want 200, got %d", status)
+	}
+}
+
 func TestPathTraversalRejected(t *testing.T) {
 	srv, _ := newTestServer(t)
 	for _, bad := range []string{"..%2f..%2fgo.mod", "evil.txt", "sub%2fx.lono.json"} {
