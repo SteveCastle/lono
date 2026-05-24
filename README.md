@@ -21,6 +21,7 @@ operate.
 - [The two APIs: Construction vs Play](#the-two-apis-construction-vs-play)
 - [The game model](#the-game-model)
 - [The rule language: guards, effects, paths](#the-rule-language-guards-effects-paths)
+- [Reactive systems: triggers, time & the journal](#reactive-systems-triggers-time--the-journal)
 - [Playing a game: the turn loop](#playing-a-game-the-turn-loop)
 - [Command reference](#command-reference)
 - [Output, data dir, and errors](#output-data-dir-and-errors)
@@ -44,7 +45,11 @@ There are two things in lono, and keeping them straight is the whole mental mode
 
 The engine **enforces** the definition over the instance: an action only fires
 if its guard holds, a value can't exceed its bounds, a relationship can't point
-at a character who doesn't exist, dice are reproducible from a seed.
+at a character who doesn't exist, dice are reproducible from a seed. It's also
+**reactive**: rules ("triggers") fire automatically when conditions arise, an
+in-game clock drives scheduled and recurring events, and a narrative journal
+records what happened — so consequences, timers, and continuity live in the
+engine rather than the model's memory.
 
 ```mermaid
 flowchart LR
@@ -201,13 +206,14 @@ flowchart TD
     DEF --> M["machines<br/>storylines: states, transitions,<br/>endings; global or attached"]
     DEF --> DV["derived<br/>aggregate queries over the graph"]
     DEF --> B["beats<br/>authored narrative events"]
+    DEF --> TR["triggers<br/>reactive rules: when → effects"]
     DEF --> CAST["entities + relationships<br/>the starting cast"]
 ```
 
 | Resource | What it is |
 |---|---|
-| **world var** | a typed global value: `int`/`float` (with min/max), `bool`, `string`, `enum`, `ref` |
-| **entity type** | a template (e.g. `character`) with typed attributes and equipment **slots** |
+| **world var** | a typed global value: `int`/`float` (with min/max), `bool`, `string`, `enum`, `ref`, or `set` (a unique collection of strings/refs — party rosters, clue sets, unlocked topics) |
+| **entity type** | a template (e.g. `character`) with typed attributes (including `set` collections) and equipment **slots** |
 | **item type** | a thing that can be held or worn: `category`, `equippable`, static attributes |
 | **relationship type** | a directed/undirected link kind between entity types, with its own attributes (e.g. `romance` carrying `affection`, `trust`) |
 | **machine** | a storyline as a state machine. *Global* machines track the overall arc; **attached** machines instantiate **per couple or per character** (e.g. a romance-stage arc for each pair) and read their host via `this.*` |
@@ -215,6 +221,7 @@ flowchart TD
 | **branch** | a transition/action between states, gated by a **guard** and applying **effects** |
 | **derived value** | a reusable aggregate over the social graph — `count`/`any`/`sum`/`min`/`max`/`argmax` — e.g. "how many characters adore the player?" |
 | **beat** | authored prose the engine surfaces as *active* when its state/guard conditions hold |
+| **trigger** | a reactive rule — `{when: <guard>, effects}` (or `every: N` ticks) — the engine fires **automatically** whenever its condition arises: consequences, deadlines, upkeep, per-turn changes |
 | **cast** | the concrete starting **entities** (characters/items in the world) and their starting **relationships** |
 
 A sample storyline machine:
@@ -244,10 +251,12 @@ rel.<type>.<from>.<to>.<attr>       machine.<name>.state
 derived.<name>                      entity.<id>.derived.<name>
 itemtype.<id>.<attr>                param.<name>
 this.<attr> / this.from / this.to   (inside an attached-machine transition)
+clock                               cooldown.<key>            (time)
+len.<path>                          roll.<store>              (set length; a stored roll)
 ```
 
 **Guards** are condition trees — leaves `{target, op, value}` with
-`eq ne gt gte lt lte in exists`, combined with `and`/`or`/`not`:
+`eq ne gt gte lt lte in exists contains`, combined with `and`/`or`/`not`:
 
 ```json
 {"and":[
@@ -263,10 +272,79 @@ set · inc · dec · mul                         add_item · remove_item
 create_entity · destroy_entity                equip · unequip
 set_relationship · adjust_relationship · remove_relationship
 set_machine_state · set_attached_state        roll (seeded dice)   mark_beat
+add_to · remove_from · clear (set ops)        compute · if/then/else
+schedule · cooldown (time)                    record (journal)
 ```
 
 The engine validates every effect (types, bounds, references) before committing,
 and rolls draw from a per-instance seed so playthroughs are reproducible.
+
+**Computed & conditional effects.** An operand can be a literal, a stored roll
+(`{"$roll":"atk"}`), or another value (`{"$path":"entity.player.level"}`); the
+`compute` op does arithmetic (`add|sub|mul|div|min|max|mod`); and `if`/`then`/
+`else` branches an effect list on a guard. Together with a roll that's readable
+as `roll.<store>`, a single action expresses a skill check:
+
+```json
+[{"op":"roll","dice":"1d20","store":"atk"},
+ {"op":"if","when":{"target":"roll.atk","op":"gte","value":12},
+    "then":[{"op":"compute","target":"entity.goblin.health","fn":"sub",
+             "a":{"$path":"entity.goblin.health"},"b":{"$roll":"atk"}}],
+    "else":[{"op":"mark_beat","beat":"you_miss"}]}]
+```
+
+So damage formulas, scaled costs, and skill checks stay in the engine — the model
+doesn't do the math.
+
+---
+
+## Reactive systems: triggers, time & the journal
+
+The engine doesn't just respond to commands — it reacts.
+
+**Triggers** are rules defined on the game that fire **automatically** whenever
+their condition arises. After *every* committed change (and every clock tick), the
+engine "settles": it fires triggers whose `when` guard has just become true,
+repeating until nothing more fires (edge-triggered, so a rule fires on the rising
+edge rather than continuously; `once` fires at most once; a loop cap prevents
+runaway cascades). The command's output lists which triggers `fired`.
+
+```mermaid
+flowchart LR
+    A["do / apply / set / advance"] --> B["apply the effects"]
+    B --> C{{"settle: any trigger's<br/>when newly true?"}}
+    C -->|yes| D["fire its effects"]
+    D --> C
+    C -->|no more| E["commit + report fired"]
+```
+
+```json
+"triggers": {
+  "raise_alarm": {
+    "when": {"target":"world.alarm","op":"eq","value":true},
+    "once": true,
+    "effects": [
+      {"op":"set","target":"entity.guard.hostile","value":true},
+      {"op":"schedule","in":3,"do":[{"op":"set_machine_state","machine":"arc","state":"caught"}]},
+      {"op":"record","text":"The alarm screams. Guards close in — you have moments."}
+    ]
+  }
+}
+```
+
+**Time.** Each instance has an integer `clock`. `lono advance <run> [n]` ticks it;
+each tick applies any **scheduled** effects now due (`{"op":"schedule","in":N,"do":[…]}`
+— deadlines, delayed consequences), fires **periodic** triggers (`"every": N`),
+expires cooldowns, then settles. A **cooldown** (`{"op":"cooldown","key":"confess","ticks":2}`)
+gates an action's re-use: guard it with `{"target":"cooldown.confess","op":"eq","value":0}`.
+
+**Narrative journal.** Distinct from the mechanical action history, the `record`
+op (`{"op":"record","text":"Aria forgave you.","tags":["aria"]}`) appends to an
+engine-owned **log** — authored by the model as it narrates, and by triggers at
+consequential moments. It's surfaced in the `state` output and fully readable via
+`inspect <run> log`, and it's preserved across snapshots — so a resumed session
+(or one whose context was trimmed) can recall *the story so far*, not just the
+current numbers.
 
 ---
 
@@ -279,17 +357,20 @@ sequenceDiagram
     participant L as lono
     loop each turn
         M->>L: state run
-        L-->>M: world, characters, relationships, scene,<br/>active beats, legal actions, endings
+        L-->>M: world, characters, relationships, scene, clock,<br/>active beats, legal actions, endings, recent journal
         M->>U: narrate the scene + offer the legal choices
         U->>M: a choice
-        M->>L: do run machine action   (or apply / set)
-        L-->>M: ok + new state  (or ok:false + why it is illegal)
+        M->>L: do run machine action   (or apply / set / advance)
+        L-->>M: ok + new state + fired triggers  (or ok:false + why it is illegal)
     end
     Note over M,L: on an ending, narrate it and stop
 ```
 
 The contract for the driver: **read state every turn, only perform listed actions
-or validated ops, never invent state.** lono is the source of truth.
+or validated ops, never invent state.** lono is the source of truth. Each result
+also reports any triggers that `fired` (automatic consequences to narrate); use
+`advance` to pass in-game time, and `record` (via `apply`) to write journal
+entries the next session can read back.
 
 ---
 
@@ -323,6 +404,7 @@ lono define machine  set|rm <id> <name>    --spec '<json>'
 lono define branch   set|rm <id> <machine> --spec '<transition json>'   # transition, upsert by id
 lono define scene    set|rm <id> <machine> <state> --spec '<stateMeta json>'
 lono define event    set|rm <id> <name>    --spec '<beat json>'
+lono define trigger  set|rm <id> <name>    --spec '<trigger json>'      # reactive rule
 ```
 (`item`=item-type, `relationship-type`=rel-type, `branch`=transition, `event`=beat — friendly aliases.)
 
@@ -330,11 +412,12 @@ lono define event    set|rm <id> <name>    --spec '<beat json>'
 ```
 lono play start <game> --id <run> [--seed N]
 lono play list
-lono state <run>                          # full state + actions + beats + endings
+lono state <run>                          # full state + actions + beats + endings + clock + journal
 lono actions <run>
-lono inspect <run> [path] [--tree]        # targeted read of live state
+lono inspect <run> [path] [--tree]        # targeted read of live state (e.g. inspect <run> log)
+lono advance <run> [n]                    # tick the clock: fires scheduled/periodic/reactive triggers
 lono do <run> <machine> <action> [--params '<json>'] [--rel <from>,<to> | --entity <id>]
-lono apply <run> --ops '<json array of effects>'
+lono apply <run> --ops '<json array of effects>'   # incl. record (journal), add_to, compute, schedule …
 lono set <run> <path> --value <v> | --spec '<json>' [--force]   # entity-level write (validated; --force = raw)
 lono rm  <run> <path> [--force]
 lono snapshot create <run> [--label "<l>"] | list <run> | show <run> <snap>
@@ -364,6 +447,8 @@ The data directory is resolved as `--data-dir` → `$LONO_HOME` → `./.lono`. L
 Common error codes: `NOT_FOUND`, `INVALID_DEFINITION` (with a `details` list),
 `ACTION_FAILED`, `APPLY_FAILED`, `GUARD_FAILED`, `NO_SUCH_PATH`,
 `PATH_NOT_WRITABLE`, `GAME_EXISTS`, `INSTANCE_EXISTS`, `LOCKED`, `BAD_INPUT`.
+Successful results may also carry a `warnings` list (e.g. `TRIGGER_LOOP` if a
+reactive cascade hit the settle cap).
 
 ---
 
