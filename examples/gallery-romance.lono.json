@@ -26,10 +26,17 @@
         "secrets_shared": {
           "type": "set", "elem": "string",
           "description": "Topics this character has confided to the player"
-        }
+        },
+        "location": {"type": "ref", "refType": "location"}
       },
       "slots": {
         "outfit": {"accepts": ["formalwear"]}
+      }
+    },
+    "location": {
+      "description": "An area of the Ardmore gallery",
+      "attributes": {
+        "name": {"type": "string"}
       }
     }
   },
@@ -66,6 +73,15 @@
           "type": "int", "default": 0, "min": 0, "max": 100,
           "description": "Confidence that the other person is genuine"
         }
+      }
+    },
+    "exit": {
+      "description": "A way between areas",
+      "from":     "location",
+      "to":       "location",
+      "directed": true,
+      "attributes": {
+        "direction": {"type": "string"}
       }
     }
   },
@@ -386,6 +402,43 @@
     }
   },
 
+  "triggers": {
+    "scene_mingling": {
+      "when":   {"target": "machine.arc.state", "op": "eq", "value": "cocktails"},
+      "once":   true,
+      "intent": "scene: mingling at the bar",
+      "effects": [
+        {"op": "set",    "target": "entity.player.location",  "value": "the_bar"},
+        {"op": "set",    "target": "entity.celeste.location", "value": "the_bar"},
+        {"op": "set",    "target": "entity.rafael.location",  "value": "the_bar"},
+        {"op": "set",    "target": "entity.dominic.location", "value": "the_bar"},
+        {"op": "record", "text": "The party gathers around the bar."}
+      ]
+    },
+    "scene_on_the_floor": {
+      "when":   {"target": "machine.arc.state", "op": "eq", "value": "gallery_floor"},
+      "once":   true,
+      "intent": "scene: on the floor",
+      "effects": [
+        {"op": "set",    "target": "entity.player.location",  "value": "the_gallery"},
+        {"op": "set",    "target": "entity.celeste.location", "value": "the_gallery"},
+        {"op": "set",    "target": "entity.rafael.location",  "value": "the_terrace"},
+        {"op": "set",    "target": "entity.dominic.location", "value": "the_gallery"},
+        {"op": "record", "text": "The guests drift out onto the gallery floor."}
+      ]
+    },
+    "scene_alone_together": {
+      "when":   {"target": "machine.arc.state", "op": "eq", "value": "private_room"},
+      "once":   true,
+      "intent": "scene: alone together",
+      "effects": [
+        {"op": "set",    "target": "entity.player.location",  "value": "the_private_room"},
+        {"op": "set",    "target": "entity.celeste.location", "value": "the_private_room"},
+        {"op": "record", "text": "You slip away to the quiet of the private room."}
+      ]
+    }
+  },
+
   "beats": {
     "celeste_opens_up": {
       "text":         "After a pause, Celeste says: 'You know, I almost didn't come tonight. I'm glad I did.' She doesn't explain further. She doesn't need to.",
@@ -474,7 +527,8 @@
       "attrs":       {
         "name":       "You",
         "occupation": "writer",
-        "confidence": 6
+        "confidence": 6,
+        "location":   "the_bar"
       },
       "inventory":   {"velvet_jacket": 1},
       "equipped":    {"outfit": "velvet_jacket"},
@@ -485,7 +539,8 @@
       "attrs":       {
         "name":       "Celeste Vann",
         "occupation": "poet",
-        "confidence": 7
+        "confidence": 7,
+        "location":   "the_bar"
       },
       "description": "Stands near a large abstract oil, glass of red wine at her lips, reading the label rather than the painting."
     },
@@ -494,7 +549,8 @@
       "attrs":       {
         "name":       "Rafael Osei",
         "occupation": "critic",
-        "confidence": 8
+        "confidence": 8,
+        "location":   "the_bar"
       },
       "description": "Talks with his hands. Currently holding court in front of a bronze sculpture, champagne forgotten on the plinth behind him."
     },
@@ -503,9 +559,30 @@
       "attrs":       {
         "name":       "Dominic Reyes",
         "occupation": "curator",
-        "confidence": 4
+        "confidence": 4,
+        "location":   "the_bar"
       },
       "description": "Stands near the back, slightly apart, watching the crowd with the intensity of someone who arranged it."
+    },
+    "the_bar": {
+      "type":        "location",
+      "attrs":       {"name": "The Bar"},
+      "description": "A long marble bar running the length of the entrance room."
+    },
+    "the_gallery": {
+      "type":        "location",
+      "attrs":       {"name": "The Gallery Floor"},
+      "description": "The main exhibition space — high ceilings, bold canvases, champagne flutes catching the light."
+    },
+    "the_terrace": {
+      "type":        "location",
+      "attrs":       {"name": "The Terrace"},
+      "description": "A narrow stone terrace overlooking the street, used for fresh air and quiet conversations."
+    },
+    "the_private_room": {
+      "type":        "location",
+      "attrs":       {"name": "The Private Room"},
+      "description": "A quieter anteroom at the back, lit by a single recessed lamp."
     }
   },
 
@@ -515,6 +592,66 @@
     {"type": "romance", "from": "dominic",  "to": "player",  "attrs": {"affection": 0, "tension": 0,  "trust": 0}},
     {"type": "romance", "from": "player",   "to": "celeste", "attrs": {"affection": 5, "tension": 5,  "trust": 5}},
     {"type": "romance", "from": "player",   "to": "rafael",  "attrs": {"affection": 5, "tension": 8,  "trust": 5}},
-    {"type": "romance", "from": "player",   "to": "dominic", "attrs": {"affection": 0, "tension": 0,  "trust": 0}}
-  ]
+    {"type": "romance", "from": "player",   "to": "dominic", "attrs": {"affection": 0, "tension": 0,  "trust": 0}},
+    {"type": "exit", "from": "the_bar",     "to": "the_gallery",      "attrs": {"direction": "into the gallery"}},
+    {"type": "exit", "from": "the_gallery", "to": "the_bar",          "attrs": {"direction": "back to the bar"}},
+    {"type": "exit", "from": "the_gallery", "to": "the_terrace",      "attrs": {"direction": "onto the terrace"}},
+    {"type": "exit", "from": "the_terrace", "to": "the_gallery",      "attrs": {"direction": "back inside"}},
+    {"type": "exit", "from": "the_gallery", "to": "the_private_room", "attrs": {"direction": "into the private room"}},
+    {"type": "exit", "from": "the_private_room", "to": "the_gallery", "attrs": {"direction": "out to the gallery"}}
+  ],
+
+  "_editor": {
+    "map": {
+      "placeType": "location",
+      "exitType":  "exit",
+      "moverAttr": "location",
+      "cell": 28,
+      "rooms": {
+        "the_terrace":      {"x": 9, "y": 1, "w": 4, "h": 3},
+        "the_bar":          {"x": 3, "y": 6, "w": 4, "h": 3},
+        "the_gallery":      {"x": 9, "y": 6, "w": 4, "h": 3},
+        "the_private_room": {"x": 15, "y": 6, "w": 4, "h": 3}
+      },
+      "tokens": {
+        "player":  {"x": 0, "y": 1},
+        "celeste": {"x": 1, "y": 1},
+        "rafael":  {"x": 2, "y": 1},
+        "dominic": {"x": 0, "y": 2}
+      }
+    },
+    "scenes": {
+      "mingling": {
+        "trigger":    "scene_mingling",
+        "arcState":   "cocktails",
+        "placements": {
+          "player":  "the_bar",
+          "celeste": "the_bar",
+          "rafael":  "the_bar",
+          "dominic": "the_bar"
+        },
+        "record": "The party gathers around the bar."
+      },
+      "on_the_floor": {
+        "trigger":    "scene_on_the_floor",
+        "arcState":   "gallery_floor",
+        "placements": {
+          "player":  "the_gallery",
+          "celeste": "the_gallery",
+          "rafael":  "the_terrace",
+          "dominic": "the_gallery"
+        },
+        "record": "The guests drift out onto the gallery floor."
+      },
+      "alone_together": {
+        "trigger":    "scene_alone_together",
+        "arcState":   "private_room",
+        "placements": {
+          "player":  "the_private_room",
+          "celeste": "the_private_room"
+        },
+        "record": "You slip away to the quiet of the private room."
+      }
+    }
+  }
 }
