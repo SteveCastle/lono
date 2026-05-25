@@ -183,10 +183,11 @@ into the binary — no install, no network):
   their starting relationships), *Map* (see below), *Story* (state machines, with
   endings authored as terminal states), *Beats*, *Systems* (triggers + derived
   queries), *Lore*, and a raw *JSON* tab as a universal fallback.
-- **A visual grid map & scene editor** — the *Map* section is an endless,
-  full-bleed grid you scroll to zoom and drag to pan. Rooms are rectangles you
-  drag, resize, name, and connect with exits (drawn as labelled lines); characters
-  and props are tokens you drop into rooms. Each token
+- **A visual grid map & scene editor** — the *Map* section is an endless grid
+  centered on the origin `(0,0)` (so the map grows in every direction); you scroll
+  to zoom and drag to pan. Rooms are rectangles you drag, resize, name, and connect
+  with exits (drawn as labelled, arrowed lines — bidirectional pairs are split so
+  their labels don't overlap); characters and props are tokens you drop into rooms. Each token
   stores **both** its room (the `location` graph reference, which the engine
   enforces) **and** its grid coordinate within the room (authoring metadata). The
   room layout is shared, and **scenes are tabs** over that same map: switch to a
