@@ -1,7 +1,7 @@
 {
   "name": "lono",
   "description": "Collaboratively design and run story-driven, character- and relationship-driven games with the lono state engine. A Construction API (first-class cast: characters, items, relationships, narrative events, scenes, endings) plus tree introspection (get/--tree) and a Play API (run + take actions), backed by a bundled, rules-enforcing engine binary.",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "author": {
     "name": "Callsign Media"
   },
