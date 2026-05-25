@@ -398,5 +398,51 @@
     {"type": "exit", "from": "kitchen", "to": "hall",    "attrs": {"direction": "south"}},
     {"type": "exit", "from": "kitchen", "to": "cellar",  "attrs": {"direction": "down", "locked": true}},
     {"type": "exit", "from": "cellar",  "to": "kitchen", "attrs": {"direction": "up"}}
-  ]
+  ],
+
+  "triggers": {
+    "scene_reckoning": {
+      "when":   {"target": "machine.arc.state", "op": "eq", "value": "solved"},
+      "once":   true,
+      "intent": "scene: The Reckoning",
+      "effects": [
+        {"op": "set",    "target": "entity.detective.location", "value": "foyer"},
+        {"op": "set",    "target": "entity.morse.location",     "value": "foyer"},
+        {"op": "set",    "target": "entity.isabelle.location",  "value": "foyer"},
+        {"op": "record", "text": "Inspector Graves gathers the household in the foyer and names the killer."}
+      ]
+    }
+  },
+
+  "_editor": {
+    "map": {
+      "placeType":  "location",
+      "exitType":   "exit",
+      "moverAttr":  "location",
+      "cell":       28,
+      "rooms": {
+        "kitchen": {"x": 9,  "y": 1,  "w": 4, "h": 3},
+        "cellar":  {"x": 15, "y": 1,  "w": 4, "h": 3},
+        "gallery": {"x": 3,  "y": 6,  "w": 4, "h": 3},
+        "hall":    {"x": 9,  "y": 6,  "w": 4, "h": 3},
+        "library": {"x": 15, "y": 6,  "w": 4, "h": 3},
+        "foyer":   {"x": 9,  "y": 11, "w": 4, "h": 3}
+      },
+      "tokens": {
+        "detective": {"x": 1, "y": 1},
+        "morse":     {"x": 1, "y": 1},
+        "isabelle":  {"x": 1, "y": 1}
+      }
+    },
+    "scenes": {
+      "reckoning": {
+        "name":       "The Reckoning",
+        "machine":    "arc",
+        "state":      "solved",
+        "once":       true,
+        "placements": {"detective": "foyer", "morse": "foyer", "isabelle": "foyer"},
+        "record":     "Inspector Graves gathers the household in the foyer and names the killer."
+      }
+    }
+  }
 }
