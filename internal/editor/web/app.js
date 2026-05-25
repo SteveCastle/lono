@@ -49,29 +49,38 @@ const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = se
 // ---------- store ----------
 const S = {
   meta: null, files: [], file: null, def: null,
-  validation: [], dirty: false, section: 'game',
+  validation: [], dirty: false, section: 'overview',
   subtab: { types: 'entityTypes', cast: 'entities', systems: 'triggers', map: 'layout' },
   mapSel: null, mapTab: 'layout', mapZoom: 1, mapScroll: null,
+  charSel: null, itemSel: null,
+  storyTab: null, storySel: null, storyZoom: 1, storyScroll: null,
   pt: null, ptSeed: 42,
 };
 
-const SECTIONS = [
-  ['game', 'Game'], ['world', 'World'], ['types', 'Types'], ['cast', 'Cast'],
-  ['map', 'Map'], ['story', 'Story'], ['beats', 'Beats'], ['systems', 'Systems'], ['lore', 'Lore'], ['json', 'JSON'],
+// Designer-concept navigation: build the cast, items and world; assemble the
+// story; reach for the raw schema only when you need it.
+const NAV = [
+  ['Build', [['overview', 'Overview'], ['characters', 'Characters'], ['items', 'Items'], ['map', 'Map']]],
+  ['Story', [['story', 'Story flow'], ['beats', 'Beats'], ['lore', 'Lore']]],
+  ['Advanced', [['types', 'Types'], ['world', 'World'], ['systems', 'Systems'], ['json', 'JSON']]],
 ];
+const SECTION_LABEL = Object.fromEntries(NAV.flatMap(([, items]) => items));
 
 function counts() {
   const d = S.def || {};
   const n = (o) => o ? (Array.isArray(o) ? o.length : Object.keys(o).length) : 0;
+  const pt = d.entityTypes ? detectPlaceType(d) : '';
+  const chars = Object.values(d.entities || {}).filter(e => e.type !== pt).length;
   return {
-    world: n(d.world) + n(d.setup),
-    types: n(d.entityTypes) + n(d.itemTypes) + n(d.relationshipTypes),
-    cast: n(d.entities) + n(d.relationships),
+    characters: chars,
+    items: n(d.itemTypes),
     map: placesCount(d),
     story: n(d.machines),
     beats: n(d.beats),
-    systems: n(d.triggers) + n(d.derived),
     lore: n(d.lore),
+    types: n(d.entityTypes) + n(d.itemTypes) + n(d.relationshipTypes),
+    world: n(d.world) + n(d.setup),
+    systems: n(d.triggers) + n(d.derived),
   };
 }
 
@@ -1595,6 +1604,470 @@ function syncScenes(m) {
   if (!Object.keys(S.def.triggers).length) delete S.def.triggers;
 }
 
+// ======================= CHARACTERS =======================
+// Lore entries about a subject (character / item / place), edited inline.
+function loreAbout(subjectId) {
+  S.def.lore = S.def.lore || {};
+  const box = h('div', {});
+  const entries = Object.keys(S.def.lore).filter(k => S.def.lore[k].subject === subjectId);
+  if (!entries.length) box.appendChild(h('div', { class: 'empty' }, 'no lore yet'));
+  for (const k of entries) {
+    const lo = S.def.lore[k]; lo.tags = lo.tags || [];
+    const sub = h('div', { class: 'subcard' });
+    sub.appendChild(h('div', { class: 'kv-row' }, renameInput(S.def.lore, k, () => renderMain()),
+      h('span', { style: 'flex:1' }), h('button', { class: 'tiny del', onclick: () => { delete S.def.lore[k]; touched(); renderMain(); } }, '✕')));
+    sub.appendChild(field('title', textInput(lo, 'title')));
+    sub.appendChild(field('text', textArea(lo, 'text', 3)));
+    sub.appendChild(field('tags', stringList(lo.tags, { ph: 'tag' })));
+    box.appendChild(sub);
+  }
+  box.appendChild(h('button', { class: 'tiny add-btn', onclick: () => {
+    let i = 1, nk = subjectId + '_lore'; while (nk in S.def.lore) nk = subjectId + '_lore' + (++i);
+    S.def.lore[nk] = { title: '', text: '', subject: subjectId }; touched(); renderMain();
+  } }, '+ add lore about ' + nameOf(subjectId)));
+  return box;
+}
+
+function newCharacter() {
+  S.def.entityTypes = S.def.entityTypes || {};
+  if (!S.def.entityTypes.character) S.def.entityTypes.character = { description: 'A person in the story', attributes: { name: { type: 'string' } } };
+  S.def.entities = S.def.entities || {};
+  const id = uniqueId('character', x => x in S.def.entities);
+  S.def.entities[id] = { type: 'character', attrs: { name: 'New character' } };
+  S.charSel = id; touched(); refresh();
+}
+
+function ensureCharLocationAttr(e, pt, moverAttr) {
+  const et = S.def.entityTypes[e.type]; et.attributes = et.attributes || {};
+  if (!et.attributes[moverAttr] || et.attributes[moverAttr].type !== 'ref') et.attributes[moverAttr] = { type: 'ref', refType: pt };
+}
+
+function archetypeSelect(e, pt) {
+  const types = Object.keys(S.def.entityTypes || {}).filter(t => t !== pt);
+  return selectInput(e, 'type', types, { allowEmpty: false, onChange: () => { touched(); renderMain(); } });
+}
+
+// statBlock edits the character's stats/skills. These live on the archetype
+// (entity type) so they're shared by every character of that archetype; values
+// are per-character. Adding/removing a stat updates the archetype.
+function statBlock(id, pt) {
+  const e = S.def.entities[id]; e.attrs = e.attrs || {};
+  const et = S.def.entityTypes[e.type]; et.attributes = et.attributes || {};
+  const moverAttr = (ed().map && ed().map.moverAttr) || 'location';
+  const stats = Object.keys(et.attributes).filter(a => a !== 'name' && a !== moverAttr && !(et.attributes[a].type === 'ref' && et.attributes[a].refType === pt));
+  const box = h('div', {});
+  if (!stats.length) box.appendChild(h('div', { class: 'empty' }, 'no stats — add Strength, Charm, Lockpicking… whatever your game needs'));
+  for (const a of stats) {
+    const spec = et.attributes[a];
+    let valCtl;
+    if (spec.type === 'int' || spec.type === 'float') {
+      valCtl = h('input', { type: 'number', value: e.attrs[a] ?? '', style: 'max-width:110px' });
+      valCtl.addEventListener('input', () => { e.attrs[a] = valCtl.value === '' ? undefined : Number(valCtl.value); touched(); });
+    } else if (spec.type === 'bool') {
+      valCtl = checkbox(e.attrs, a, '');
+    } else {
+      valCtl = h('input', { type: 'text', value: e.attrs[a] ?? '' });
+      valCtl.addEventListener('input', () => { e.attrs[a] = valCtl.value || undefined; touched(); });
+    }
+    box.appendChild(h('div', { class: 'kv-row' },
+      h('span', { class: 'key', style: 'align-self:center' }, a + (spec.type !== 'int' ? ` (${spec.type})` : '')),
+      valCtl,
+      h('button', { class: 'tiny del', title: 'remove this stat from the archetype', onclick: () => {
+        delete et.attributes[a];
+        for (const c of Object.values(S.def.entities)) if (c.type === e.type && c.attrs) delete c.attrs[a];
+        touched(); renderMain();
+      } }, '✕')));
+  }
+  box.appendChild(h('button', { class: 'tiny add-btn', onclick: () => {
+    let i = 1, nm = 'stat'; while (nm in et.attributes) nm = 'stat' + (++i);
+    et.attributes[nm] = { type: 'int', default: 0 }; e.attrs[nm] = 0; touched(); renderMain();
+  } }, '+ add stat'));
+  return box;
+}
+
+function charRelationships(id, pt) {
+  S.def.relationships = S.def.relationships || [];
+  const box = h('div', {});
+  const relTypes = relTypeNames().filter(t => { const rt = S.def.relationshipTypes[t]; return rt.from !== pt && rt.to !== pt; });
+  const rels = S.def.relationships.filter(r => (r.from === id || r.to === id) && r.type !== ((ed().map && ed().map.exitType) || 'exit'));
+  if (!rels.length) box.appendChild(h('div', { class: 'empty' }, 'no relationships yet'));
+  for (const r of rels) {
+    const other = r.from === id ? r.to : r.from;
+    const arrow = r.from === id ? `→ ${nameOf(other)}` : `← ${nameOf(other)}`;
+    r.attrs = r.attrs || {};
+    const sub = h('div', { class: 'subcard' });
+    sub.appendChild(h('div', { class: 'kv-row' }, h('span', { style: 'flex:1' }, `${r.type} ${arrow}`),
+      h('button', { class: 'tiny del', onclick: () => { const i = S.def.relationships.indexOf(r); if (i >= 0) S.def.relationships.splice(i, 1); touched(); renderMain(); } }, '✕')));
+    sub.appendChild(kvEditor(r.attrs, { valueKind: 'value' }));
+    box.appendChild(sub);
+  }
+  if (!relTypes.length) { box.appendChild(h('div', { class: 'hint' }, 'define a relationship type (Advanced → Types) to connect characters')); return box; }
+  const others = Object.keys(S.def.entities).filter(x => x !== id && S.def.entities[x].type !== pt);
+  const pick = { type: relTypes[0], to: '' };
+  const relSel = selectInput(pick, 'type', relTypes, { allowEmpty: false });
+  const toSel = selectInput(pick, 'to', others.map(o => ({ value: o, label: nameOf(o) })), { emptyLabel: 'with…' });
+  box.appendChild(h('div', { class: 'inline', style: 'margin-top:6px;gap:6px' }, relSel, toSel,
+    h('button', { class: 'tiny', onclick: () => { if (!pick.to) return; S.def.relationships.push({ type: pick.type, from: id, to: pick.to, attrs: {} }); touched(); renderMain(); } }, '+ add')));
+  return box;
+}
+
+function characterDetail(id, pt) {
+  const e = S.def.entities[id]; e.attrs = e.attrs || {}; e.inventory = e.inventory || {}; e.equipped = e.equipped || {};
+  const root = h('div', {});
+
+  const idc = h('div', { class: 'card' });
+  const nameInp = h('input', { type: 'text', value: e.attrs.name || '' });
+  nameInp.addEventListener('input', () => { e.attrs.name = nameInp.value || undefined; touched(); });
+  nameInp.addEventListener('change', () => { const nid = uniqueId(slugify(e.attrs.name || 'character'), x => x !== id && x in S.def.entities); if (nid !== id) { renameEntity(id, nid); S.charSel = nid; touched(); renderMain(); } });
+  idc.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, nameOf(id)),
+    h('span', { class: 'hint', style: 'margin-left:6px' }, id), h('span', { style: 'flex:1' }),
+    h('button', { class: 'tiny del', onclick: () => { if (!confirm('Delete ' + nameOf(id) + '?')) return; delete S.def.entities[id]; S.def.relationships = (S.def.relationships || []).filter(r => r.from !== id && r.to !== id); S.charSel = null; touched(); refresh(); } }, '✕ delete')));
+  idc.appendChild(h('div', { class: 'row' }, field('name', nameInp), field('archetype', archetypeSelect(e, pt), 'characters of one archetype share a stat sheet')));
+  idc.appendChild(field('bio', textArea(e, 'description', 3), 'a short description the narrator can draw on'));
+  root.appendChild(idc);
+
+  const sc = h('div', { class: 'card' });
+  sc.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Stats & skills'), h('span', { class: 'hint', style: 'margin-left:6px' }, 'shared by archetype “' + e.type + '” · used as check modifiers')));
+  sc.appendChild(statBlock(id, pt));
+  root.appendChild(sc);
+
+  const ic = h('div', { class: 'card' });
+  ic.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Inventory & equipment')));
+  ic.appendChild(h('div', { class: 'pt-section-label' }, 'Carries (item → count)'));
+  ic.appendChild(itemTypeNames().length ? kvEditor(e.inventory, { valueKind: 'int' }) : h('div', { class: 'hint' }, 'define items on the Items page first'));
+  ic.appendChild(h('div', { class: 'pt-section-label' }, 'Wears (slot → item)'));
+  ic.appendChild(kvEditor(e.equipped, { valueKind: 'string' }));
+  root.appendChild(ic);
+
+  const rc = h('div', { class: 'card' });
+  rc.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Relationships')));
+  rc.appendChild(charRelationships(id, pt));
+  root.appendChild(rc);
+
+  if (pt && Object.values(S.def.entities).some(x => x.type === pt)) {
+    const lc = h('div', { class: 'card' });
+    lc.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Starting location')));
+    const places = Object.keys(S.def.entities).filter(x => S.def.entities[x].type === pt);
+    const moverAttr = (ed().map && ed().map.moverAttr) || 'location';
+    lc.appendChild(selectInput(e.attrs, moverAttr, places.map(p => ({ value: p, label: nameOf(p) })), { onChange: () => { ensureCharLocationAttr(e, pt, moverAttr); touched(); } }));
+    lc.appendChild(h('div', { class: 'hint', style: 'margin-top:4px' }, 'or place them visually on the Map page'));
+    root.appendChild(lc);
+  }
+
+  const loc = h('div', { class: 'card' });
+  loc.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Lore about ' + nameOf(id))));
+  loc.appendChild(loreAbout(id));
+  root.appendChild(loc);
+  return root;
+}
+
+function renderCharacters(main) {
+  S.def.entities = S.def.entities || {}; S.def.entityTypes = S.def.entityTypes || {};
+  const pt = detectPlaceType(S.def);
+  const chars = Object.keys(S.def.entities).filter(id => S.def.entities[id].type !== pt);
+  main.appendChild(h('p', { class: 'section-blurb' }, 'Your cast. Each character has a name, an archetype, stats/skills (which become check modifiers), what they carry, who they know, where they start, and the lore about them.'));
+  const wrap = h('div', { style: 'display:flex;gap:16px;align-items:flex-start' });
+  const rail = h('div', { style: 'flex:0 0 220px' });
+  rail.appendChild(h('button', { class: 'primary add-btn', style: 'width:100%;margin-bottom:8px', onclick: newCharacter }, '+ new character'));
+  if (!chars.length) rail.appendChild(h('div', { class: 'empty' }, 'No characters yet.'));
+  for (const id of chars) {
+    const sel = S.charSel === id;
+    rail.appendChild(h('div', { class: 'nav-item' + (sel ? ' active' : ''), style: 'border:1px solid var(--border);margin-bottom:4px', onclick: () => { S.charSel = id; renderMain(); } },
+      h('span', {}, nameOf(id)), h('span', { class: 'count' }, S.def.entities[id].type)));
+  }
+  wrap.appendChild(rail);
+  const detail = h('div', { style: 'flex:1;min-width:0' });
+  if (!S.charSel || !S.def.entities[S.charSel] || S.def.entities[S.charSel].type === pt) detail.appendChild(h('div', { class: 'empty' }, 'Select a character on the left, or create one.'));
+  else detail.appendChild(characterDetail(S.charSel, pt));
+  wrap.appendChild(detail);
+  main.appendChild(wrap);
+}
+
+// ======================= ITEMS =======================
+function itemDetail(id) {
+  const it = S.def.itemTypes[id]; it.attributes = it.attributes || {};
+  const root = h('div', {});
+  const c = h('div', { class: 'card' });
+  const nameInp = h('input', { class: 'key', type: 'text', value: id });
+  nameInp.addEventListener('change', () => {
+    const nid = slugify(nameInp.value);
+    if (nid && nid !== id && !(nid in S.def.itemTypes)) {
+      S.def.itemTypes[nid] = S.def.itemTypes[id]; delete S.def.itemTypes[id];
+      for (const e of Object.values(S.def.entities || {})) {
+        if (e.inventory && e.inventory[id] !== undefined) { e.inventory[nid] = e.inventory[id]; delete e.inventory[id]; }
+        if (e.equipped) for (const sl in e.equipped) if (e.equipped[sl] === id) e.equipped[sl] = nid;
+      }
+      S.itemSel = nid; touched(); renderMain();
+    } else nameInp.value = id;
+  });
+  c.appendChild(h('div', { class: 'card-head' }, nameInp, h('span', { style: 'flex:1' }),
+    h('button', { class: 'tiny del', onclick: () => { delete S.def.itemTypes[id]; S.itemSel = null; touched(); refresh(); } }, '✕ delete')));
+  c.appendChild(field('description', textArea(it, 'description', 3)));
+  c.appendChild(h('div', { class: 'row' }, field('category', textInput(it, 'category'), 'groups items for equip slots'), field('max stack', textInput(it, 'maxStack', { type: 'number' }))));
+  c.appendChild(h('div', { class: 'field' }, checkbox(it, 'equippable', 'can be equipped (worn/wielded)')));
+  c.appendChild(h('div', { class: 'pt-section-label' }, 'Attributes (free-form, e.g. damage, brightness)'));
+  c.appendChild(kvEditor(it.attributes, { valueKind: 'value' }));
+  const accepts = [];
+  for (const [tn, et] of Object.entries(S.def.entityTypes || {})) for (const [sn, sl] of Object.entries(et.slots || {})) if ((sl.accepts || []).includes(it.category)) accepts.push(`${tn}.${sn}`);
+  c.appendChild(h('div', { class: 'pt-section-label' }, 'Fits equipment slots'));
+  c.appendChild(h('div', { class: 'hint' }, it.category ? (accepts.length ? accepts.join(', ') : `no slots accept category “${it.category}” yet — add a slot on a character archetype`) : 'set a category for this item to fit equip slots'));
+  root.appendChild(c);
+  const lc = h('div', { class: 'card' });
+  lc.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Lore about ' + id)));
+  lc.appendChild(loreAbout(id));
+  root.appendChild(lc);
+  return root;
+}
+
+function renderItems(main) {
+  S.def.itemTypes = S.def.itemTypes || {};
+  main.appendChild(h('p', { class: 'section-blurb' }, 'Things characters carry, wear, or find. Define each once, then place them via characters, the map, or story effects.'));
+  const wrap = h('div', { style: 'display:flex;gap:16px;align-items:flex-start' });
+  const rail = h('div', { style: 'flex:0 0 220px' });
+  rail.appendChild(h('button', { class: 'primary add-btn', style: 'width:100%;margin-bottom:8px', onclick: () => { const id = uniqueId('item', x => x in S.def.itemTypes); S.def.itemTypes[id] = { description: '' }; S.itemSel = id; touched(); refresh(); } }, '+ new item'));
+  const ids = Object.keys(S.def.itemTypes);
+  if (!ids.length) rail.appendChild(h('div', { class: 'empty' }, 'No items yet.'));
+  for (const id of ids) {
+    const sel = S.itemSel === id;
+    rail.appendChild(h('div', { class: 'nav-item' + (sel ? ' active' : ''), style: 'border:1px solid var(--border);margin-bottom:4px', onclick: () => { S.itemSel = id; renderMain(); } },
+      h('span', {}, id), S.def.itemTypes[id].equippable ? h('span', { class: 'count' }, 'wear') : null));
+  }
+  wrap.appendChild(rail);
+  const detail = h('div', { style: 'flex:1;min-width:0' });
+  if (!S.itemSel || !S.def.itemTypes[S.itemSel]) detail.appendChild(h('div', { class: 'empty' }, 'Select an item on the left, or create one.'));
+  else detail.appendChild(itemDetail(S.itemSel));
+  wrap.appendChild(detail);
+  main.appendChild(wrap);
+}
+
+// ======================= STORY FLOW =======================
+function storyZoomControls() {
+  const setZ = (z) => { S.storyZoom = clampZoom(z); renderMain(); };
+  return h('span', { class: 'inline', style: 'gap:4px' },
+    h('button', { class: 'tiny', onclick: () => setZ((S.storyZoom || 1) - 0.15) }, '−'),
+    h('span', { class: 'hint', style: 'min-width:40px;text-align:center' }, Math.round((S.storyZoom || 1) * 100) + '%'),
+    h('button', { class: 'tiny', onclick: () => setZ((S.storyZoom || 1) + 0.15) }, '+'));
+}
+
+function ensureStoryPos(mid) {
+  const e = ed(); e.story = e.story || {}; e.story[mid] = e.story[mid] || { pos: {} };
+  const pos = e.story[mid].pos = e.story[mid].pos || {};
+  const m = S.def.machines[mid];
+  const cols = Math.max(1, Math.ceil(Math.sqrt((m.states || []).length)));
+  let i = 0;
+  for (const st of (m.states || [])) { if (!pos[st]) pos[st] = { x: 60 + (i % cols) * 240, y: 50 + Math.floor(i / cols) * 150 }; i++; }
+  return pos;
+}
+
+function scaffoldStory() {
+  S.def.machines = S.def.machines || {};
+  if (!S.def.machines.arc) S.def.machines.arc = { description: 'The main story arc', initial: 'start', states: ['start', 'end'], stateMeta: { end: { description: 'The story concludes.', terminal: true, ending: true } }, transitions: [{ id: 'finish', from: 'start', to: 'end' }] };
+  S.storyTab = 'arc'; touched(); refresh();
+}
+
+function addMachine() {
+  let i = 1, nk = 'arc'; while (nk in (S.def.machines || {})) nk = 'arc' + (++i);
+  S.def.machines[nk] = { initial: 'start', states: ['start', 'end'], stateMeta: { end: { terminal: true, ending: true } }, transitions: [{ id: 'finish', from: 'start', to: 'end' }] };
+  S.storyTab = nk; S.storySel = null; touched(); refresh();
+}
+
+function addState(mid) {
+  const m = S.def.machines[mid]; m.states = m.states || [];
+  let i = 1, nk = 'scene'; while (m.states.includes(nk)) nk = 'scene' + (++i);
+  m.states.push(nk);
+  S.storySel = { kind: 'state', id: nk }; touched(); renderMain();
+}
+
+// renameState updates every reference: states, initial, stateMeta, transitions,
+// positions, beats, and scenes (so the flow graph stays consistent).
+function renameState(mid, oldS, newS) {
+  const m = S.def.machines[mid];
+  if (!newS || newS === oldS || m.states.includes(newS)) return;
+  m.states = m.states.map(s2 => s2 === oldS ? newS : s2);
+  if (m.initial === oldS) m.initial = newS;
+  if (m.stateMeta && m.stateMeta[oldS]) { m.stateMeta[newS] = m.stateMeta[oldS]; delete m.stateMeta[oldS]; }
+  for (const tr of (m.transitions || [])) {
+    if (tr.to === oldS) tr.to = newS;
+    if (Array.isArray(tr.from)) tr.from = tr.from.map(f => f === oldS ? newS : f);
+    else if (tr.from === oldS) tr.from = newS;
+  }
+  const pos = ed().story && ed().story[mid] && ed().story[mid].pos;
+  if (pos && pos[oldS]) { pos[newS] = pos[oldS]; delete pos[oldS]; }
+  for (const b of Object.values(S.def.beats || {})) if (b.machineState && b.machineState.machine === mid && b.machineState.state === oldS) b.machineState.state = newS;
+  for (const sc of Object.values((ed().scenes) || {})) if (sc.machine === mid && sc.state === oldS) sc.state = newS;
+  if (typeof syncScenes === 'function' && ed().map) syncScenes(mapCfg());
+}
+
+function deleteState(mid, st) {
+  const m = S.def.machines[mid];
+  m.states = m.states.filter(s2 => s2 !== st);
+  if (m.stateMeta) delete m.stateMeta[st];
+  m.transitions = (m.transitions || []).filter(tr => tr.to !== st && !(Array.isArray(tr.from) ? tr.from.includes(st) : tr.from === st));
+  if (m.initial === st) m.initial = m.states[0] || '';
+  const pos = ed().story && ed().story[mid] && ed().story[mid].pos; if (pos) delete pos[st];
+  S.storySel = null; touched(); refresh();
+}
+
+function storyCanvas(mid) {
+  const m = S.def.machines[mid];
+  const pos = ensureStoryPos(mid);
+  const zoom = S.storyZoom || 1;
+  const NW = 150, NH = 50;
+  let maxX = 1000, maxY = 700;
+  for (const st of m.states) { const p = pos[st]; if (p) { maxX = Math.max(maxX, p.x + 320); maxY = Math.max(maxY, p.y + 240); } }
+  const W = maxX * zoom, H = maxY * zoom;
+  const box = h('div', { style: 'flex:1;min-width:0;align-self:stretch;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:grab' });
+  const svg = s('svg', { width: W, height: H, style: 'display:block' });
+  svg.appendChild(s('defs', {}, s('marker', { id: 'flowarrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 8, markerHeight: 8, orient: 'auto-start-reverse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', fill: '#5a6180' }))));
+
+  const bg = s('rect', { x: 0, y: 0, width: W, height: H, fill: 'transparent' });
+  bg.addEventListener('mousedown', (ev) => {
+    ev.preventDefault();
+    const sx = ev.clientX, sy = ev.clientY, sl = box.scrollLeft, stp = box.scrollTop; let moved = false;
+    const mm = (e2) => { moved = true; box.scrollLeft = sl - (e2.clientX - sx); box.scrollTop = stp - (e2.clientY - sy); };
+    const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (!moved && S.storySel) { S.storySel = null; renderMain(); } };
+    document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
+  });
+  svg.appendChild(bg);
+  box.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = box.getBoundingClientRect(); const ox = e.clientX - rect.left, oy = e.clientY - rect.top;
+    const fx = (ox + box.scrollLeft) / zoom, fy = (oy + box.scrollTop) / zoom;
+    const nz = clampZoom((S.storyZoom || 1) * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+    if (nz === (S.storyZoom || 1)) return;
+    S.storyZoom = nz; S.storyAnchor = { fx, fy, ox, oy }; renderMain();
+  }, { passive: false });
+
+  const ctr = (st) => { const p = pos[st]; return { x: (p.x + NW / 2) * zoom, y: (p.y + NH / 2) * zoom }; };
+  const edgeG = s('g', {}); svg.appendChild(edgeG);
+  const pairs = {};
+  (m.transitions || []).forEach((tr, ti) => {
+    const froms = Array.isArray(tr.from) ? tr.from : [tr.from];
+    froms.forEach(f => { const fr = (f === '*' || f == null) ? m.initial : f; if (!pos[fr] || !pos[tr.to] || fr === tr.to) return; const key = fr + '>' + tr.to; (pairs[key] = pairs[key] || []).push({ tr, ti, fr }); });
+  });
+  for (const key in pairs) {
+    const list = pairs[key];
+    list.forEach((ed2, idx) => {
+      const a = ctr(ed2.fr), b = ctr(ed2.tr.to);
+      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+      const off = (idx - (list.length - 1) / 2) * 18;
+      const x1 = a.x + ux * (NW / 2 + 6) * zoom + nx * off, y1 = a.y + uy * 20 * zoom + ny * off;
+      const x2 = b.x - ux * (NW / 2 + 8) * zoom + nx * off, y2 = b.y - uy * 22 * zoom + ny * off;
+      const seld = S.storySel && S.storySel.kind === 'transition' && S.storySel.ti === ed2.ti;
+      const line = s('line', { x1, y1, x2, y2, stroke: seld ? '#7c9cff' : '#5a6180', 'stroke-width': seld ? 3 : 2, 'marker-end': 'url(#flowarrow)', style: 'cursor:pointer' });
+      line.addEventListener('mousedown', (ev) => { ev.stopPropagation(); ev.preventDefault(); S.storySel = { kind: 'transition', ti: ed2.ti }; renderMain(); });
+      edgeG.appendChild(line);
+      edgeG.appendChild(s('text', { x: (x1 + x2) / 2 + nx * 9, y: (y1 + y2) / 2 + ny * 9 + 3, 'text-anchor': 'middle', fill: '#9aa3b2', 'font-size': 11, style: 'pointer-events:none' }, ed2.tr.id));
+    });
+  }
+
+  for (const st of m.states) {
+    const p = pos[st]; const meta = (m.stateMeta || {})[st] || {}; const ending = meta.ending || meta.terminal; const isInit = m.initial === st;
+    const selfLoop = (m.transitions || []).some(tr => tr.to === st && (Array.isArray(tr.from) ? tr.from.includes(st) : tr.from === st));
+    const seld = S.storySel && S.storySel.kind === 'state' && S.storySel.id === st;
+    const g = s('g', { transform: `translate(${p.x * zoom},${p.y * zoom})`, style: 'cursor:move' });
+    g.appendChild(s('rect', { x: 0, y: 0, width: NW * zoom, height: NH * zoom, rx: 9, fill: ending ? '#1f2c1c' : (seld ? '#222b44' : '#1b1e26'), stroke: seld ? '#7c9cff' : (ending ? '#4caf7d' : '#2e3342'), 'stroke-width': seld ? 2 : 1 }));
+    g.appendChild(s('text', { x: 9 * zoom, y: 21 * zoom, fill: '#e6e8ee', 'font-size': 13 * zoom, 'font-weight': 600, style: 'pointer-events:none' }, st));
+    g.appendChild(s('text', { x: 9 * zoom, y: 38 * zoom, fill: ending ? '#4caf7d' : '#9aa3b2', 'font-size': 10 * zoom, style: 'pointer-events:none' }, [isInit ? '● start' : '', ending ? '■ ending' : '', selfLoop ? '↺' : ''].filter(Boolean).join('  ')));
+    let sx, sy, ox, oy, moved;
+    g.addEventListener('mousedown', (ev) => {
+      ev.stopPropagation(); ev.preventDefault();
+      sx = ev.clientX; sy = ev.clientY; ox = p.x; oy = p.y; moved = false;
+      const mm = (e2) => { p.x = Math.max(0, ox + (e2.clientX - sx) / zoom); p.y = Math.max(0, oy + (e2.clientY - sy) / zoom); if (Math.abs(e2.clientX - sx) + Math.abs(e2.clientY - sy) > 3) moved = true; g.setAttribute('transform', `translate(${p.x * zoom},${p.y * zoom})`); };
+      const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (moved) { touched(); renderMain(); } else { S.storySel = { kind: 'state', id: st }; renderMain(); } };
+      document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
+    });
+    svg.appendChild(g);
+  }
+  box.appendChild(svg);
+  box.addEventListener('scroll', () => { S.storyScroll = { left: box.scrollLeft, top: box.scrollTop }; });
+  requestAnimationFrame(() => {
+    if (S.storyAnchor) { box.scrollLeft = S.storyAnchor.fx * zoom - S.storyAnchor.ox; box.scrollTop = S.storyAnchor.fy * zoom - S.storyAnchor.oy; S.storyAnchor = null; }
+    else if (S.storyScroll) { box.scrollLeft = S.storyScroll.left; box.scrollTop = S.storyScroll.top; }
+    S.storyScroll = { left: box.scrollLeft, top: box.scrollTop };
+  });
+  return box;
+}
+
+function stateInspector(mid, st) {
+  const m = S.def.machines[mid]; m.stateMeta = m.stateMeta || {};
+  const meta = m.stateMeta[st] = m.stateMeta[st] || {};
+  const box = h('div', {});
+  const nameInp = h('input', { class: 'key', type: 'text', value: st });
+  nameInp.addEventListener('change', () => { renameState(mid, st, nameInp.value.trim()); S.storySel = { kind: 'state', id: nameInp.value.trim() }; touched(); refresh(); });
+  box.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Scene / state'), h('span', { style: 'flex:1' }),
+    h('button', { class: 'tiny del', onclick: () => deleteState(mid, st) }, '✕ delete')));
+  box.appendChild(field('id', nameInp));
+  box.appendChild(field('description', textArea(meta, 'description', 3), 'what the narrator sees in this scene'));
+  box.appendChild(h('div', { class: 'field' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = m.initial === st; c.addEventListener('change', () => { if (c.checked) { m.initial = st; touched(); renderMain(); } }); return h('label', { class: 'checkbox' }, c, 'starting scene'); })()));
+  box.appendChild(h('div', { class: 'field' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = !!meta.terminal; c.addEventListener('change', () => { meta.terminal = c.checked || undefined; touched(); renderMain(); }); return h('label', { class: 'checkbox' }, c, 'terminal (no actions out)'); })()));
+  box.appendChild(h('div', { class: 'field' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = !!meta.ending; c.addEventListener('change', () => { meta.ending = c.checked || undefined; touched(); renderMain(); }); return h('label', { class: 'checkbox' }, c, 'an ending'); })()));
+  // outgoing actions
+  box.appendChild(h('div', { class: 'pt-section-label' }, 'Actions out of this scene'));
+  const outs = (m.transitions || []).map((tr, ti) => ({ tr, ti })).filter(({ tr }) => (Array.isArray(tr.from) ? tr.from.includes(st) : tr.from === st) || tr.from === '*');
+  if (!outs.length) box.appendChild(h('div', { class: 'empty' }, 'none'));
+  for (const { tr, ti } of outs) box.appendChild(h('button', { class: 'action-btn', onclick: () => { S.storySel = { kind: 'transition', ti }; renderMain(); } }, `${tr.id} → ${tr.to}`));
+  box.appendChild(h('button', { class: 'tiny add-btn', onclick: () => {
+    m.transitions = m.transitions || [];
+    let i = 1, nk = 'action'; while ((m.transitions).some(t => t.id === nk)) nk = 'action' + (++i);
+    m.transitions.push({ id: nk, from: st, to: m.states[0] || st });
+    S.storySel = { kind: 'transition', ti: m.transitions.length - 1 }; touched(); renderMain();
+  } }, '+ add action from here'));
+  return box;
+}
+
+function transitionInspector(mid, ti) {
+  const m = S.def.machines[mid]; const tr = (m.transitions || [])[ti];
+  if (!tr) { S.storySel = null; return h('div', { class: 'empty' }, 'transition gone'); }
+  const box = h('div', {});
+  box.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Action'), h('span', { class: 'hint', style: 'margin-left:6px' }, `→ ${tr.to}`), h('span', { style: 'flex:1' }),
+    h('button', { class: 'tiny del', onclick: () => { m.transitions.splice(ti, 1); S.storySel = null; touched(); renderMain(); } }, '✕ delete')));
+  box.appendChild(h('div', { class: 'hint', style: 'margin-bottom:8px' }, 'Build the action from blocks below — a guard that gates it, and effects (checks, moves, items, lore, flags, journal…) that fire when it runs.'));
+  box.appendChild(transitionEditor(tr, m));
+  return box;
+}
+
+function storyInspector(mid) {
+  const m = S.def.machines[mid];
+  if (S.storySel && S.storySel.kind === 'state' && m.states.includes(S.storySel.id)) return stateInspector(mid, S.storySel.id);
+  if (S.storySel && S.storySel.kind === 'transition') return transitionInspector(mid, S.storySel.ti);
+  // overview
+  const box = h('div', {});
+  box.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Arc: ' + mid)));
+  box.appendChild(field('description', textArea(m, 'description', 2)));
+  box.appendChild(field('intent', textInput(m, 'intent')));
+  box.appendChild(field('starting scene', selectInput(m, 'initial', m.states, { allowEmpty: false, onChange: () => { touched(); renderMain(); } })));
+  box.appendChild(h('div', { class: 'hint', style: 'margin-top:10px' }, 'Click a scene to edit it or add actions; click an action (arrow) to build what it checks and does. Green = an ending.'));
+  return box;
+}
+
+function renderStoryFlow(main) {
+  S.def.machines = S.def.machines || {};
+  const globals = Object.keys(S.def.machines).filter(mid => !S.def.machines[mid].attach);
+  if (!globals.length) {
+    main.appendChild(h('p', { class: 'section-blurb' }, 'The story flow is a graph of scenes connected by actions, with endings as terminal scenes. None yet.'));
+    main.appendChild(h('button', { class: 'primary', onclick: scaffoldStory }, '+ Create a story arc'));
+    return;
+  }
+  if (!globals.includes(S.storyTab)) { S.storyTab = globals[0]; S.storySel = null; }
+  const mid = S.storyTab;
+  const bar = h('div', { class: 'tabs' });
+  for (const g of globals) bar.appendChild(h('div', { class: 'tab' + (S.storyTab === g ? ' active' : ''), onclick: () => { S.storyTab = g; S.storySel = null; renderMain(); } }, g));
+  bar.appendChild(h('div', { class: 'tab', style: 'color:var(--accent)', onclick: addMachine }, '+ arc'));
+  main.appendChild(bar);
+  const tb = h('div', { class: 'inline', style: 'margin:10px 0;gap:12px' });
+  tb.appendChild(h('button', { class: 'primary tiny', onclick: () => addState(mid) }, '+ add scene'));
+  tb.appendChild(storyZoomControls());
+  tb.appendChild(h('span', { class: 'hint' }, 'drag scenes to arrange · click a scene or action to edit · drag empty space to pan · scroll to zoom'));
+  main.appendChild(tb);
+  const wrap = h('div', { style: 'display:flex;gap:14px;align-items:stretch;flex:1;min-height:0' });
+  wrap.appendChild(storyCanvas(mid));
+  const panel = h('div', { style: 'flex:0 0 340px;overflow:auto' });
+  panel.appendChild(storyInspector(mid));
+  wrap.appendChild(panel);
+  main.appendChild(wrap);
+}
+
 function renderJSON(main) {
   main.appendChild(h('p', { class: 'section-blurb' }, 'The whole definition as JSON — the universal fallback. Edit and Apply to update the editor, or just review.'));
   const ta = h('textarea', { class: 'json-area' });
@@ -1622,27 +2095,36 @@ function renderSidebar() {
   const nav = $('#sidebar');
   nav.innerHTML = '';
   const c = counts();
-  for (const [id, label] of SECTIONS) {
-    const cnt = c[id];
-    nav.appendChild(h('div', { class: 'nav-item' + (S.section === id ? ' active' : ''), onclick: () => { S.section = id; refresh(); } },
-      h('span', {}, label),
-      cnt ? h('span', { class: 'count' }, cnt) : null));
+  for (const [group, items] of NAV) {
+    nav.appendChild(h('div', { class: 'nav-section-label' }, group));
+    for (const [id, label] of items) {
+      const cnt = c[id];
+      nav.appendChild(h('div', { class: 'nav-item' + (S.section === id ? ' active' : ''), onclick: () => { S.section = id; refresh(); } },
+        h('span', {}, label),
+        cnt ? h('span', { class: 'count' }, cnt) : null));
+    }
   }
 }
 
+const SECTION_RENDER = {
+  overview: (m) => renderGame(m), characters: (m) => renderCharacters(m), items: (m) => renderItems(m),
+  map: (m) => renderMap(m), story: (m) => renderStoryFlow(m), beats: (m) => renderBeats(m),
+  lore: (m) => renderLore(m), types: (m) => renderTypes(m), world: (m) => renderWorld(m),
+  systems: (m) => renderSystems(m), json: (m) => renderJSON(m),
+};
+
 function renderMain() {
   const main = $('#main');
-  // The map is a full-height flex column so its canvas can fill all space;
+  // Map and Story are full-height flex columns so their canvases fill all space;
   // other sections keep the default scrolling block layout.
-  const mapMode = S.section === 'map';
-  main.style.display = mapMode ? 'flex' : '';
-  main.style.flexDirection = mapMode ? 'column' : '';
-  main.style.overflow = mapMode ? 'hidden' : '';
+  const full = S.section === 'map' || S.section === 'story';
+  main.style.display = full ? 'flex' : '';
+  main.style.flexDirection = full ? 'column' : '';
+  main.style.overflow = full ? 'hidden' : '';
   main.innerHTML = '';
   if (!S.def) { main.appendChild(h('div', { class: 'empty' }, 'Open or create a game file to begin.')); return; }
-  const label = SECTIONS.find(s => s[0] === S.section)[1];
-  main.appendChild(h('div', { class: 'section-head' }, h('h1', {}, label)));
-  ({ game: renderGame, world: renderWorld, types: renderTypes, cast: renderCast, map: renderMap, story: renderStory, beats: renderBeats, systems: renderSystems, lore: renderLore, json: renderJSON }[S.section])(main);
+  main.appendChild(h('div', { class: 'section-head' }, h('h1', {}, SECTION_LABEL[S.section] || S.section)));
+  (SECTION_RENDER[S.section] || SECTION_RENDER.overview)(main);
 }
 
 function refresh() { renderSidebar(); renderMain(); updateValidityPill(); }
@@ -1693,6 +2175,7 @@ async function openFile(file) {
   const r = await api('GET', '/api/games/' + encodeURIComponent(file));
   S.file = file; S.def = JSON.parse(JSON.stringify(r.definition)); S.validation = r.validation || []; S.dirty = false;
   S.mapSel = null; S.mapTab = 'layout'; S.mapScroll = null; // fresh map view per game
+  S.charSel = null; S.itemSel = null; S.storyTab = null; S.storySel = null; S.storyScroll = null;
   $('#btn-save').disabled = true;
   refresh();
 }

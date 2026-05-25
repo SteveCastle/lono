@@ -178,11 +178,23 @@ lono edit --port 4321 --no-open # choose the port; don't auto-open a browser
 It opens `http://localhost:4321` with a single-page editor (everything is bundled
 into the binary — no install, no network):
 
-- **Sections that mirror the model** — *Game* (the pitch), *World* (variables +
-  setup), *Types* (entity / item / relationship kinds), *Cast* (the entities and
-  their starting relationships), *Map* (see below), *Story* (state machines, with
-  endings authored as terminal states), *Beats*, *Systems* (triggers + derived
-  queries), *Lore*, and a raw *JSON* tab as a universal fallback.
+- **Organized the way a game designer thinks**, not the way the schema is stored.
+  The nav is grouped:
+  - **Build** — *Overview* (the pitch); *Characters* (a purpose-built page per
+    character: identity, stats/skills that double as check modifiers, inventory &
+    equipment, the relationship graph, starting location, and the lore about them);
+    *Items* (per item: description, category, equippable, attributes, which slots it
+    fits, and its lore); *Map* (see below).
+  - **Story** — *Story flow* (a visual node graph of the arc — scenes are draggable
+    nodes, actions are arrows, endings glow green; click an arrow to **build the
+    action from a palette of blocks**: a guard plus effects like checks, moves,
+    items, lore reveals, flags, and journal lines); *Beats*; *Lore*.
+  - **Advanced** — *Types*, *World* (variables + setup), *Systems* (triggers +
+    derived), and a raw *JSON* tab as a universal fallback.
+
+  Things that belong to a character, item, or place (their lore, relationships,
+  stats) are managed *on that thing's page*, so you build the way you imagine the
+  game — then assemble the flow tree in Story.
 - **A visual grid map & scene editor** — the *Map* section is an endless grid
   centered on the origin `(0,0)` (so the map grows in every direction); you scroll
   to zoom and drag to pan. Rooms are rectangles you drag, resize, name, and connect
