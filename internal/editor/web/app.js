@@ -1771,6 +1771,62 @@ function charRelationships(id, pt) {
   return box;
 }
 
+// equipmentEditor manages a character's archetype slots and what's worn in each.
+// Slots live on the archetype (shared); each only offers items whose category it
+// accepts. You can add, rename, and remove slots and edit their accepted
+// categories here.
+function equipmentEditor(e) {
+  const et = S.def.entityTypes[e.type]; et.slots = et.slots || {}; e.equipped = e.equipped || {};
+  const box = h('div', {});
+  const slotNames = Object.keys(et.slots);
+  if (!slotNames.length) box.appendChild(h('div', { class: 'empty' }, 'no equipment slots on archetype “' + e.type + '” yet'));
+  for (const sn of slotNames) {
+    const sl = et.slots[sn]; sl.accepts = sl.accepts || [];
+    const sub = h('div', { class: 'subcard' });
+    const nameInp = h('input', { class: 'key', type: 'text', value: sn });
+    nameInp.addEventListener('change', () => {
+      const nn = nameInp.value.trim();
+      if (nn && nn !== sn && !(nn in et.slots)) {
+        et.slots[nn] = et.slots[sn]; delete et.slots[sn];
+        for (const c of Object.values(S.def.entities)) if (c.type === e.type && c.equipped && c.equipped[sn] !== undefined) { c.equipped[nn] = c.equipped[sn]; delete c.equipped[sn]; }
+        touched(); renderMain();
+      } else nameInp.value = sn;
+    });
+    sub.appendChild(h('div', { class: 'kv-row' }, nameInp, h('span', { style: 'flex:1' }),
+      h('button', { class: 'tiny del', title: 'remove this slot from the archetype', onclick: () => {
+        delete et.slots[sn];
+        for (const c of Object.values(S.def.entities)) if (c.type === e.type && c.equipped) delete c.equipped[sn];
+        touched(); renderMain();
+      } }, '✕ slot')));
+    // accepted categories — a checklist of known categories plus a free add
+    const known = [...new Set([...categories(), ...sl.accepts])];
+    sub.appendChild(h('div', { class: 'pt-section-label' }, 'accepts categories'));
+    const accBox = h('div', { class: 'inline', style: 'gap:12px;flex-wrap:wrap' });
+    for (const cat of known) {
+      const cb = h('input', { type: 'checkbox' }); cb.checked = sl.accepts.includes(cat);
+      cb.addEventListener('change', () => { if (cb.checked) { if (!sl.accepts.includes(cat)) sl.accepts.push(cat); } else sl.accepts = sl.accepts.filter(x => x !== cat); touched(); renderMain(); });
+      accBox.appendChild(h('label', { class: 'checkbox' }, cb, cat));
+    }
+    if (!known.length) accBox.appendChild(h('span', { class: 'hint' }, 'give items a category on the Items page'));
+    sub.appendChild(accBox);
+    const catInp = h('input', { type: 'text', placeholder: '+ category', style: 'max-width:160px;margin-top:6px' });
+    catInp.addEventListener('change', () => { const v = catInp.value.trim(); if (v && !sl.accepts.includes(v)) { sl.accepts.push(v); touched(); renderMain(); } });
+    sub.appendChild(catInp);
+    // equipped item — only valid (equippable + accepted-category) entries
+    const valid = itemTypeNames().filter(it => S.def.itemTypes[it].equippable && sl.accepts.includes(S.def.itemTypes[it].category || ''));
+    const opts = [...new Set([...valid, ...(e.equipped[sn] ? [e.equipped[sn]] : [])])];
+    sub.appendChild(h('div', { class: 'pt-section-label' }, 'equipped'));
+    if (!opts.length) sub.appendChild(h('div', { class: 'hint' }, 'no equippable item matches this slot’s categories yet'));
+    else sub.appendChild(selectInput(e.equipped, sn, opts, { emptyLabel: '— empty —', onChange: touched }));
+    box.appendChild(sub);
+  }
+  box.appendChild(h('button', { class: 'tiny add-btn', onclick: () => {
+    let i = 1, nk = 'slot'; while (nk in et.slots) nk = 'slot' + (++i);
+    et.slots[nk] = { accepts: [] }; touched(); renderMain();
+  } }, '+ add slot'));
+  return box;
+}
+
 function characterDetail(id, pt) {
   const e = S.def.entities[id]; e.attrs = e.attrs || {}; e.inventory = e.inventory || {}; e.equipped = e.equipped || {};
   const root = h('div', {});
@@ -1793,10 +1849,10 @@ function characterDetail(id, pt) {
 
   const ic = h('div', { class: 'card' });
   ic.appendChild(h('div', { class: 'card-head' }, h('span', { class: 'title' }, 'Inventory & equipment')));
-  ic.appendChild(h('div', { class: 'pt-section-label' }, 'Carries (item → count)'));
-  ic.appendChild(itemTypeNames().length ? kvEditor(e.inventory, { valueKind: 'int' }) : h('div', { class: 'hint' }, 'define items on the Items page first'));
-  ic.appendChild(h('div', { class: 'pt-section-label' }, 'Wears (slot → item)'));
-  ic.appendChild(kvEditor(e.equipped, { valueKind: 'string' }));
+  ic.appendChild(h('div', { class: 'pt-section-label' }, 'Carries'));
+  ic.appendChild(itemTypeNames().length ? invEditor(e.inventory) : h('div', { class: 'hint' }, 'define items on the Items page first'));
+  ic.appendChild(h('div', { class: 'pt-section-label' }, 'Equipment slots (shared by archetype “' + e.type + '”)'));
+  ic.appendChild(equipmentEditor(e));
   root.appendChild(ic);
 
   const rc = h('div', { class: 'card' });
