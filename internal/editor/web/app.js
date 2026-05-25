@@ -197,6 +197,64 @@ function valueList(arr) {
   return wrap;
 }
 
+// relTypeSelect is a relationship-type dropdown that also offers "+ new type…",
+// so you can mint a relationship type wherever one is chosen. opts: { types,
+// from, to, onChange } — types overrides the offered list; from/to seed the new
+// type's endpoints.
+function relTypeSelect(obj, key, opts = {}) {
+  const types = opts.types || relTypeNames();
+  const NEW = '__new_reltype__';
+  const sel = h('select', {});
+  sel.appendChild(h('option', { value: '' }, types.length ? '— type —' : '(none yet)'));
+  for (const t of types) { const o = h('option', { value: t }, t); if (obj[key] === t) o.selected = true; sel.appendChild(o); }
+  sel.appendChild(h('option', { value: NEW }, '✛ new relationship type…'));
+  sel.addEventListener('change', () => {
+    if (sel.value === NEW) {
+      sel.value = obj[key] || '';
+      newRelTypeModal({ from: opts.from, to: opts.to }, (id) => { obj[key] = id; (opts.onChange || touched)(); renderMain(); });
+      return;
+    }
+    obj[key] = sel.value || undefined;
+    (opts.onChange || touched)();
+  });
+  return sel;
+}
+
+// newRelTypeModal pops a small form to create a relationship type (id, endpoints,
+// directed, and optional numeric axes), then calls onCreate(id).
+function newRelTypeModal(defaults = {}, onCreate) {
+  const etypes = entityTypeNames();
+  const model = { name: '', from: defaults.from || etypes[0] || '', to: defaults.to || defaults.from || etypes[0] || '', directed: true };
+  const axes = [];
+  const nameInp = h('input', { type: 'text', placeholder: 'e.g. trust, romance, alliance', style: 'width:100%' });
+  nameInp.addEventListener('input', () => model.name = nameInp.value);
+  const backdrop = h('div', { class: 'modal-backdrop' },
+    h('div', { class: 'modal' },
+      h('h3', {}, 'New relationship type'),
+      field('name', nameInp),
+      h('div', { class: 'row' },
+        field('from (entity type)', selectInput(model, 'from', etypes, { allowEmpty: false })),
+        field('to (entity type)', selectInput(model, 'to', etypes, { allowEmpty: false }))),
+      h('div', { class: 'field' }, checkbox(model, 'directed', 'directed (A→B differs from B→A)')),
+      h('label', { style: 'font-size:12px;color:var(--muted)' }, 'axes — optional numeric attributes (e.g. affection, trust)'),
+      stringList(axes, { ph: 'axis' }),
+      h('div', { class: 'actions' },
+        h('button', { onclick: () => backdrop.remove() }, 'Cancel'),
+        h('button', { class: 'primary', onclick: () => {
+          const id = slugify(model.name);
+          if (!id) { toast('name required', 'bad'); return; }
+          if (id in (S.def.relationshipTypes || {})) { toast('that type already exists', 'bad'); return; }
+          if (!model.from || !model.to) { toast('pick from & to entity types (create a character first)', 'bad'); return; }
+          const attributes = {};
+          for (const ax of axes) { const a = slugify(ax); if (a) attributes[a] = { type: 'int', default: 0 }; }
+          S.def.relationshipTypes = S.def.relationshipTypes || {};
+          S.def.relationshipTypes[id] = { from: model.from, to: model.to, directed: !!model.directed, attributes };
+          touched(); backdrop.remove(); if (onCreate) onCreate(id);
+        } }, 'Create'))));
+  document.body.appendChild(backdrop);
+  nameInp.focus();
+}
+
 // key/value map editor. valueKind: 'value' | 'int' | 'string-item' (item dropdown) | 'string'
 function kvEditor(obj, { valueKind = 'value', keyPh = 'key', options = null } = {}) {
   const wrap = h('div', {});
@@ -447,6 +505,8 @@ function effectField(eff, f) {
   switch (f.kind) {
     case 'int': return field(f.name, textInput(eff, f.name, { type: 'number' }), f.doc);
     case 'string': {
+      // relationship-type fields get the inline "+ new type…" picker
+      if (f.name === 'relType') return field(f.name, relTypeSelect(eff, 'relType', {}), f.doc);
       // helpful dropdowns for some known fields
       const opts = fieldOptions(f.name);
       if (opts) return field(f.name, selectInput(eff, f.name, opts), f.doc);
@@ -1086,7 +1146,7 @@ function mapSettings(m) {
     h('summary', { style: 'cursor:pointer;color:var(--muted)' }, 'map settings'),
     h('div', { class: 'row', style: 'margin-top:8px' },
       field('place type', selectInput(m, 'placeType', Object.keys(S.def.entityTypes || {}), { allowEmpty: false, onChange: () => { touched(); renderMain(); } })),
-      field('exit relationship', selectInput(m, 'exitType', selfRel.length ? selfRel : Object.keys(S.def.relationshipTypes || {}), { allowEmpty: false, onChange: () => { touched(); renderMain(); } })),
+      field('exit relationship', relTypeSelect(m, 'exitType', { types: selfRel.length ? selfRel : Object.keys(S.def.relationshipTypes || {}), from: m.placeType, to: m.placeType, onChange: () => { touched(); renderMain(); } })),
       field('mover location attr', textInput(m, 'moverAttr', { onChange: () => { touched(); renderMain(); } }), 'the ref attr that points a character/object at a place')));
 }
 
@@ -1701,13 +1761,13 @@ function charRelationships(id, pt) {
     sub.appendChild(kvEditor(r.attrs, { valueKind: 'value' }));
     box.appendChild(sub);
   }
-  if (!relTypes.length) { box.appendChild(h('div', { class: 'hint' }, 'define a relationship type (Advanced → Types) to connect characters')); return box; }
   const others = Object.keys(S.def.entities).filter(x => x !== id && S.def.entities[x].type !== pt);
-  const pick = { type: relTypes[0], to: '' };
-  const relSel = selectInput(pick, 'type', relTypes, { allowEmpty: false });
+  if (!others.length) { box.appendChild(h('div', { class: 'hint' }, 'add another character to form a relationship')); return box; }
+  const pick = { type: relTypes[0] || '', to: others[0] || '' };
+  const relSel = relTypeSelect(pick, 'type', { types: relTypes, from: S.def.entities[id].type, to: S.def.entities[others[0]].type });
   const toSel = selectInput(pick, 'to', others.map(o => ({ value: o, label: nameOf(o) })), { emptyLabel: 'with…' });
   box.appendChild(h('div', { class: 'inline', style: 'margin-top:6px;gap:6px' }, relSel, toSel,
-    h('button', { class: 'tiny', onclick: () => { if (!pick.to) return; S.def.relationships.push({ type: pick.type, from: id, to: pick.to, attrs: {} }); touched(); renderMain(); } }, '+ add')));
+    h('button', { class: 'tiny', onclick: () => { if (!pick.to || !pick.type) { toast('pick a type & character', 'bad'); return; } S.def.relationships.push({ type: pick.type, from: id, to: pick.to, attrs: {} }); touched(); renderMain(); } }, '+ add')));
   return box;
 }
 
