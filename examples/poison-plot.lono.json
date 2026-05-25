@@ -1,0 +1,155 @@
+{
+  "id": "poison-plot",
+  "name": "The Poisoner's Errand",
+  "description": "A one-night assassination puzzle: fetch a poison from the pantry, return to the parlor, and convince Lord Ashby to drink it. Two poisons do different damage; he dies once he has taken 12. A compact showcase of movement, inventory, item-attribute damage, an opposed skill check, cumulative effects, and a trigger-driven ending.",
+  "intent": "showcase: move via exit, take item to inventory, an opposed `check` (persuasion vs willpower), item-attribute damage via {\"$path\":\"itemtype.x.damage\"}, cumulative damage_taken, and a reactive death trigger that ends the arc",
+  "version": 1,
+  "entityTypes": {
+    "room": { "description": "A place in the manor", "attributes": { "name": { "type": "string" } } },
+    "person": {
+      "description": "Someone at the soirée",
+      "attributes": {
+        "name": { "type": "string" },
+        "location": { "type": "ref", "refType": "room" },
+        "persuasion": { "type": "int", "default": 0 },
+        "willpower": { "type": "int", "default": 0 },
+        "damage_taken": { "type": "int", "default": 0, "min": 0 },
+        "dead": { "type": "bool", "default": false }
+      }
+    }
+  },
+  "itemTypes": {
+    "weak_poison": { "description": "A mild toxin — bitter, slow.", "category": "poison", "attributes": { "damage": 5 } },
+    "strong_poison": { "description": "A potent toxin — fast and sure.", "category": "poison", "attributes": { "damage": 7 } }
+  },
+  "relationshipTypes": {
+    "exit": { "description": "A doorway between rooms", "from": "room", "to": "room", "directed": true, "attributes": { "direction": { "type": "string" } } }
+  },
+  "machines": {
+    "arc": {
+      "description": "The plot, from scheming to the deed.",
+      "initial": "plotting",
+      "states": ["plotting", "assassinated"],
+      "stateMeta": {
+        "plotting": { "description": "You move between the parlor and the pantry, working up to it." },
+        "assassinated": { "description": "Lord Ashby collapses among his guests. The deed is done — slip away.", "terminal": true, "ending": true }
+      },
+      "transitions": [
+        {
+          "id": "go_to_pantry", "description": "Slip out to the pantry.", "from": "plotting", "to": "plotting",
+          "guard": { "target": "entity.killer.location", "op": "eq", "value": "parlor" },
+          "effects": [
+            { "op": "move", "entity": "killer", "to": "pantry", "attr": "location", "via": "exit" },
+            { "op": "record", "text": "You slip into the pantry.", "tags": ["movement"] }
+          ]
+        },
+        {
+          "id": "go_to_parlor", "description": "Return to the party.", "from": "plotting", "to": "plotting",
+          "guard": { "target": "entity.killer.location", "op": "eq", "value": "pantry" },
+          "effects": [
+            { "op": "move", "entity": "killer", "to": "parlor", "attr": "location", "via": "exit" },
+            { "op": "record", "text": "You drift back into the parlor.", "tags": ["movement"] }
+          ]
+        },
+        {
+          "id": "take_weak", "description": "Pocket a vial of weak poison (only in the pantry).", "from": "plotting", "to": "plotting",
+          "guard": { "target": "entity.killer.location", "op": "eq", "value": "pantry" },
+          "effects": [
+            { "op": "add_item", "entity": "killer", "item": "weak_poison", "count": 1 },
+            { "op": "record", "text": "You pocket a vial of weak poison.", "tags": ["item"] }
+          ]
+        },
+        {
+          "id": "take_strong", "description": "Pocket a vial of strong poison (only in the pantry).", "from": "plotting", "to": "plotting",
+          "guard": { "target": "entity.killer.location", "op": "eq", "value": "pantry" },
+          "effects": [
+            { "op": "add_item", "entity": "killer", "item": "strong_poison", "count": 1 },
+            { "op": "record", "text": "You pocket a vial of strong poison.", "tags": ["item"] }
+          ]
+        },
+        {
+          "id": "poison_weak", "description": "Offer the weak poison and try to convince Lord Ashby to drink it.", "from": "plotting", "to": "plotting",
+          "guard": { "and": [
+            { "target": "entity.killer.location", "op": "eq", "value": "parlor" },
+            { "target": "entity.victim.location", "op": "eq", "value": "parlor" },
+            { "target": "inventory.killer.weak_poison", "op": "gt", "value": 0 },
+            { "target": "entity.victim.dead", "op": "eq", "value": false }
+          ] },
+          "effects": [
+            { "op": "check", "dice": "1d20", "mods": [{ "$path": "entity.killer.persuasion" }], "dc": { "$path": "entity.victim.willpower" }, "store": "convince" },
+            { "op": "if", "when": { "target": "check.convince.success", "op": "eq", "value": true },
+              "then": [
+                { "op": "remove_item", "entity": "killer", "item": "weak_poison", "count": 1 },
+                { "op": "inc", "target": "entity.victim.damage_taken", "value": { "$path": "itemtype.weak_poison.damage" } },
+                { "op": "record", "text": "Convinced, Lord Ashby sips the weak poison and winces.", "tags": ["poison"] }
+              ],
+              "else": [ { "op": "record", "text": "Lord Ashby waves the glass away, unconvinced.", "tags": ["poison"] } ]
+            }
+          ]
+        },
+        {
+          "id": "poison_strong", "description": "Offer the strong poison and try to convince Lord Ashby to drink it.", "from": "plotting", "to": "plotting",
+          "guard": { "and": [
+            { "target": "entity.killer.location", "op": "eq", "value": "parlor" },
+            { "target": "entity.victim.location", "op": "eq", "value": "parlor" },
+            { "target": "inventory.killer.strong_poison", "op": "gt", "value": 0 },
+            { "target": "entity.victim.dead", "op": "eq", "value": false }
+          ] },
+          "effects": [
+            { "op": "check", "dice": "1d20", "mods": [{ "$path": "entity.killer.persuasion" }], "dc": { "$path": "entity.victim.willpower" }, "store": "convince" },
+            { "op": "if", "when": { "target": "check.convince.success", "op": "eq", "value": true },
+              "then": [
+                { "op": "remove_item", "entity": "killer", "item": "strong_poison", "count": 1 },
+                { "op": "inc", "target": "entity.victim.damage_taken", "value": { "$path": "itemtype.strong_poison.damage" } },
+                { "op": "record", "text": "Convinced, Lord Ashby drains the strong poison.", "tags": ["poison"] }
+              ],
+              "else": [ { "op": "record", "text": "Lord Ashby waves the glass away, unconvinced.", "tags": ["poison"] } ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "triggers": {
+    "death": {
+      "when": { "target": "entity.victim.damage_taken", "op": "gte", "value": 12 },
+      "once": true,
+      "intent": "the dose has finally proved fatal",
+      "effects": [
+        { "op": "set", "target": "entity.victim.dead", "value": true },
+        { "op": "set_machine_state", "machine": "arc", "state": "assassinated" },
+        { "op": "record", "text": "Lord Ashby's eyes glaze over. He sways, and falls.", "tags": ["death"] }
+      ]
+    }
+  },
+  "beats": {
+    "victim_ailing": {
+      "text": "Lord Ashby dabs his brow and steadies himself on a chair — something is not right with him.",
+      "machineState": { "machine": "arc", "state": "plotting" },
+      "guard": { "and": [
+        { "target": "entity.victim.damage_taken", "op": "gt", "value": 0 },
+        { "target": "entity.victim.dead", "op": "eq", "value": false }
+      ] },
+      "once": false,
+      "intent": "ambient dread once the poisoning has begun but before it's fatal"
+    }
+  },
+  "entities": {
+    "parlor": { "type": "room", "attrs": { "name": "The Parlor" }, "description": "A warm, candlelit parlor where Lord Ashby holds court among his guests." },
+    "pantry": { "type": "room", "attrs": { "name": "The Pantry" }, "description": "A cramped pantry off the kitchen, its high shelf lined with apothecary vials." },
+    "killer": { "type": "person", "attrs": { "name": "You", "location": "parlor", "persuasion": 12, "willpower": 0 }, "description": "A guest with murder in mind and a silver tongue." },
+    "victim": { "type": "person", "attrs": { "name": "Lord Ashby", "location": "parlor", "persuasion": 0, "willpower": 5 }, "description": "The host — genial, trusting, and entirely oblivious." }
+  },
+  "relationships": [
+    { "type": "exit", "from": "parlor", "to": "pantry", "attrs": { "direction": "into the pantry" } },
+    { "type": "exit", "from": "pantry", "to": "parlor", "attrs": { "direction": "back to the parlor" } }
+  ],
+  "_editor": {
+    "map": {
+      "placeType": "room", "exitType": "exit", "moverAttr": "location", "cell": 28,
+      "rooms": { "parlor": { "x": -7, "y": -1, "w": 4, "h": 3 }, "pantry": { "x": 3, "y": -1, "w": 4, "h": 3 } },
+      "tokens": { "killer": { "x": 0, "y": 1 }, "victim": { "x": 2, "y": 1 } }
+    },
+    "story": { "arc": { "pos": { "plotting": { "x": 80, "y": 90 }, "assassinated": { "x": 440, "y": 90 } } } }
+  }
+}

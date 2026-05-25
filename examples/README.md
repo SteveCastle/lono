@@ -12,6 +12,7 @@ or as fixtures while exploring the CLI.
 | [`vault-heist.lono.json`](vault-heist.lono.json) | bank heist | items, equipment, dice skill-checks | escaped clean / escaped hot / caught |
 | [`last-watch.lono.json`](last-watch.lono.json) | siege survival | reactive systems & time: triggers, clock, schedule, cooldowns, sets, journal | relieved / fallen |
 | [`hollow-manor.lono.json`](hollow-manor.lono.json) | murder mystery | worlds & maps: locations, travel, spatial queries, lore/codex | solved / wrong accusation |
+| [`poison-plot.lono.json`](poison-plot.lono.json) | assassination puzzle | skill checks: `check` op, item-attribute damage, cumulative effects, death trigger | assassinated |
 
 ## Running an example
 
@@ -54,6 +55,7 @@ section opens with rooms already arranged on the grid and the cast placed in the
 | hollow-manor | the manor's six rooms | *The Reckoning* — gathers everyone in the foyer when `arc` reaches `solved` |
 | vault-heist | Fenwick St → lobby → corridor → vault | the player walks the building as the heist advances (lobby / corridor / vault) |
 | gallery-romance | bar · gallery floor · terrace · private room | *mingling*, *on the floor*, *alone together* — guests move as the evening turns |
+| poison-plot | parlor ⇄ pantry | — |
 | last-watch | *(none — a single besieged outpost; it showcases time & reactive systems, not space)* | — |
 
 Each scene compiles to a `scene_…` trigger, so the repositioning (and any journal
@@ -158,4 +160,20 @@ lono -d ./.lono inspect m1 derived                 # exits_here / here update as
 lono -d ./.lono lore list hollow-manor             # the authored world bible
 #   examine rooms to collect clues + discover lore, travel via exits,
 #   then accuse with enough evidence → "solved"
+```
+
+### poison-plot — skill checks, item-attribute damage, cumulative effects
+A tight assassination puzzle. Shows the **`check`** op (an *opposed* persuasion
+check, `1d20 + persuasion` vs the victim's `willpower`), **item-attribute damage**
+(each poison's `damage` read via `{"$path":"itemtype.<poison>.damage"}` and added
+with `inc`), **cumulative** `damage_taken`, and a reactive **death trigger** that
+ends the arc once the victim has taken 12 — so weak (5) + strong (7) is exactly
+lethal. Every step is guarded (be in the right room, hold the poison, victim
+alive), and a failed convince spends nothing.
+
+```bash
+lono -d ./.lono game import --spec-file examples/poison-plot.lono.json
+lono -d ./.lono play start poison-plot --id k1 --seed 1
+#   go_to_pantry → take_weak → go_to_parlor → poison_weak   (victim damage 5)
+#   go_to_pantry → take_strong → go_to_parlor → poison_strong (damage 12 → death trigger → "assassinated")
 ```
