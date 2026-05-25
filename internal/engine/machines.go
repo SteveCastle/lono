@@ -18,7 +18,7 @@ type ActionInfo struct {
 // current state. Param-independent guards are evaluated now; param-gated guards
 // are deferred to PerformAction and reported via RequiresParams.
 func AvailableActions(def *Definition, st *State) ([]ActionInfo, error) {
-	var out []ActionInfo
+	out := []ActionInfo{} // always a JSON array, never null, even with no actions
 	for mName, m := range def.Machines {
 		if m.Attach != nil {
 			out = append(out, attachedActions(def, st, mName, m)...)
@@ -52,10 +52,68 @@ func buildActionInfo(def *Definition, st *State, mName, cur string, tr Transitio
 	ok, err := evalGuard(st, ctx, tr.Guard)
 	if err != nil {
 		info.Enabled, info.Reason = false, err.Error()
-	} else if !ok {
+		return info
+	}
+	if !ok {
 		info.Enabled, info.Reason = false, "guard not satisfied"
+		return info
+	}
+	// Effect-aware enabledness: the guard alone can pass while an effect would
+	// fail (e.g. a `move via:"exit"` with no edge, or a locked door). Dry-run the
+	// effects against a throwaway clone so we never advertise a move the engine
+	// would reject. Skipped for actions that take params (we can't supply them
+	// here) — those stay guard-only + RequiresParams.
+	if len(tr.Params) == 0 {
+		if feasible, reason := transitionFeasible(def, st, tr, host); !feasible {
+			info.Enabled, info.Reason = false, reason
+		}
 	}
 	return info
+}
+
+// transitionFeasible reports whether tr's effects can be applied against the
+// current state without error. It runs them on a deep clone with a feasibility
+// RNG seeded from the live RNG state (so any `roll` matches what real execution
+// would draw), and discards the clone — the live state is never mutated.
+func transitionFeasible(def *Definition, st *State, tr Transition, host *hostRef) (bool, string) {
+	if len(tr.Effects) == 0 {
+		return true, ""
+	}
+	work := st.Clone()
+	ctx := newEvalCtx(nil, &RNG{state: work.RNGState})
+	ctx.def = def
+	if host != nil {
+		ctx.host = rebindHost(work, host)
+		if ctx.host == nil {
+			return true, "" // host vanished in the clone; don't block on that
+		}
+	}
+	for _, e := range tr.Effects {
+		if err := applyEffect(def, work, ctx, e); err != nil {
+			return false, err.Error()
+		}
+	}
+	return true, ""
+}
+
+// rebindHost re-resolves a host into a cloned state, so `this.*` effect writes
+// land on the clone rather than the live entity/relationship.
+func rebindHost(work *State, h *hostRef) *hostRef {
+	switch h.kind {
+	case "entity":
+		e, ok := work.Entities[h.id]
+		if !ok {
+			return nil
+		}
+		return &hostRef{kind: "entity", id: h.id, ent: e}
+	case "relationship":
+		r := findRelationship(work, h.rel.Type, h.rel.From, h.rel.To)
+		if r == nil {
+			return nil
+		}
+		return &hostRef{kind: "relationship", rel: r}
+	}
+	return nil
 }
 
 // attachedActions enumerates the available transitions for every host instance
