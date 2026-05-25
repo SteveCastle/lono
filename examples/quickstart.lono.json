@@ -264,5 +264,23 @@
     {"type": "trust", "from": "player", "to": "guard", "attrs": {"level": 0}},
     {"type": "exit",  "from": "study",  "to": "hall",   "attrs": {"direction": "north"}},
     {"type": "exit",  "from": "hall",   "to": "garden", "attrs": {"direction": "east"}}
-  ]
+  ],
+
+  "_editor": {
+    "map": {
+      "placeType": "location",
+      "exitType":  "exit",
+      "moverAttr": "location",
+      "cell":      28,
+      "rooms": {
+        "study":  {"x": 5,  "y": 9, "w": 4, "h": 3},
+        "hall":   {"x": 5,  "y": 4, "w": 4, "h": 3},
+        "garden": {"x": 11, "y": 4, "w": 4, "h": 3}
+      },
+      "tokens": {
+        "player": {"x": 1, "y": 1},
+        "guard":  {"x": 1, "y": 1}
+      }
+    }
+  }
 }
