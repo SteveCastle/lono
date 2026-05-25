@@ -111,6 +111,16 @@
         "detail": {"type": "int", "default": 0, "min": 0, "max": 10,
                    "description": "How much useful intelligence the from side has on the to side"}
       }
+    },
+    "exit": {
+      "description": "A way through the building",
+      "from":     "location",
+      "to":       "location",
+      "directed": true,
+      "attributes": {
+        "direction": {"type": "string"},
+        "locked":    {"type": "bool", "default": false}
+      }
     }
   },
 
@@ -394,6 +404,33 @@
   },
 
   "triggers": {
+    "scene_enter_lobby": {
+      "when":   {"target": "machine.arc.state", "op": "eq", "value": "lobby"},
+      "once":   true,
+      "intent": "scene: enter lobby",
+      "effects": [
+        {"op": "set",    "target": "entity.player.location", "value": "lobby"},
+        {"op": "record", "text": "You slip into the Voss Foundation lobby."}
+      ]
+    },
+    "scene_to_corridor": {
+      "when":   {"target": "machine.arc.state", "op": "eq", "value": "vault_corridor"},
+      "once":   true,
+      "intent": "scene: to corridor",
+      "effects": [
+        {"op": "set",    "target": "entity.player.location", "value": "vault_corridor"},
+        {"op": "record", "text": "Down the service stairs to the sub-basement."}
+      ]
+    },
+    "scene_at_vault": {
+      "when":   {"target": "machine.arc.state", "op": "eq", "value": "vault_room"},
+      "once":   true,
+      "intent": "scene: at vault",
+      "effects": [
+        {"op": "set",    "target": "entity.player.location", "value": "vault_room"},
+        {"op": "record", "text": "The vault door yields. You're inside."}
+      ]
+    },
     "on_alarm": {
       "when":  {"target": "world.alarm", "op": "eq", "value": true},
       "once":  true,
@@ -474,6 +511,54 @@
 
   "relationships": [
     {"type": "knows", "from": "player",  "to": "watcher", "attrs": {"detail": 8}},
-    {"type": "knows", "from": "watcher", "to": "player",  "attrs": {"detail": 6}}
-  ]
+    {"type": "knows", "from": "watcher", "to": "player",  "attrs": {"detail": 6}},
+    {"type": "exit", "from": "approach_point", "to": "lobby",          "attrs": {"direction": "inside",      "locked": false}},
+    {"type": "exit", "from": "lobby",          "to": "approach_point", "attrs": {"direction": "out",          "locked": false}},
+    {"type": "exit", "from": "lobby",          "to": "vault_corridor", "attrs": {"direction": "stairs down",  "locked": false}},
+    {"type": "exit", "from": "vault_corridor", "to": "lobby",          "attrs": {"direction": "up",           "locked": false}},
+    {"type": "exit", "from": "vault_corridor", "to": "vault_room",     "attrs": {"direction": "vault door",   "locked": true}},
+    {"type": "exit", "from": "vault_room",     "to": "vault_corridor", "attrs": {"direction": "out",          "locked": false}}
+  ],
+
+  "_editor": {
+    "map": {
+      "placeType":  "location",
+      "exitType":   "exit",
+      "moverAttr":  "location",
+      "cell":       28,
+      "rooms": {
+        "approach_point": {"x": 3,  "y": 6, "w": 4, "h": 3},
+        "lobby":          {"x": 9,  "y": 6, "w": 4, "h": 3},
+        "vault_corridor": {"x": 15, "y": 6, "w": 4, "h": 3},
+        "vault_room":     {"x": 21, "y": 6, "w": 4, "h": 3}
+      },
+      "tokens": {
+        "player":  {"x": 1, "y": 1},
+        "watcher": {"x": 2, "y": 1}
+      }
+    },
+    "scenes": {
+      "enter_lobby": {
+        "machine":    "arc",
+        "state":      "lobby",
+        "once":       true,
+        "placements": {"player": "lobby"},
+        "record":     "You slip into the Voss Foundation lobby."
+      },
+      "to_corridor": {
+        "machine":    "arc",
+        "state":      "vault_corridor",
+        "once":       true,
+        "placements": {"player": "vault_corridor"},
+        "record":     "Down the service stairs to the sub-basement."
+      },
+      "at_vault": {
+        "machine":    "arc",
+        "state":      "vault_room",
+        "once":       true,
+        "placements": {"player": "vault_room"},
+        "record":     "The vault door yields. You're inside."
+      }
+    }
+  }
 }
