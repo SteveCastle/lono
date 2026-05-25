@@ -4,7 +4,6 @@
   "version": 1,
   "description": "A short dating-sim vignette set at a private art-gallery opening. Over the course of one evening the player navigates desire, wit, and rivalry — choosing who to charm, who to confide in, and whether to leave alone or with someone special.",
   "intent": "showcase relationships with multiple axes, an attached romance-stage machine, derived social-graph queries, guarded beats, and three differentiated endings",
-
   "world": {
     "evening_over": {
       "type": "bool",
@@ -12,116 +11,159 @@
       "description": "Set true when the player steps toward the door"
     }
   },
-
   "entityTypes": {
     "character": {
       "description": "A person attending the gallery opening",
       "attributes": {
-        "name":       {"type": "string"},
-        "occupation": {"type": "string"},
+        "name": {
+          "type": "string"
+        },
+        "occupation": {
+          "type": "string"
+        },
         "confidence": {
-          "type": "int", "default": 5, "min": 0, "max": 10,
+          "type": "int",
+          "default": 5,
+          "min": 0,
+          "max": 10,
           "description": "How self-assured this person feels tonight"
         },
         "secrets_shared": {
-          "type": "set", "elem": "string",
+          "type": "set",
+          "elem": "string",
           "description": "Topics this character has confided to the player"
         },
-        "location": {"type": "ref", "refType": "location"}
+        "location": {
+          "type": "ref",
+          "refType": "location"
+        }
       },
       "slots": {
-        "outfit": {"accepts": ["formalwear"]}
+        "outfit": {
+          "accepts": [
+            "formalwear"
+          ]
+        }
       }
     },
     "location": {
       "description": "An area of the Ardmore gallery",
       "attributes": {
-        "name": {"type": "string"}
+        "name": {
+          "type": "string"
+        }
       }
     }
   },
-
   "itemTypes": {
     "velvet_jacket": {
-      "category":   "formalwear",
+      "category": "formalwear",
       "equippable": true,
       "attributes": {
-        "style":      9,
-        "color":      "deep-burgundy",
+        "style": 9,
+        "color": "deep-burgundy",
         "impression": "commands attention"
       },
       "description": "A tailored velvet jacket — the kind that makes strangers want to know your name."
     }
   },
-
   "relationshipTypes": {
     "romance": {
       "description": "A romantic/social connection between two people at the gallery",
-      "from":     "character",
-      "to":       "character",
+      "from": "character",
+      "to": "character",
       "directed": true,
       "attributes": {
         "affection": {
-          "type": "int", "default": 0, "min": 0, "max": 100,
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "max": 100,
           "description": "Warmth and romantic interest"
         },
         "tension": {
-          "type": "int", "default": 0, "min": 0, "max": 100,
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "max": 100,
           "description": "Charged friction — can be attractive or destabilising"
         },
         "trust": {
-          "type": "int", "default": 0, "min": 0, "max": 100,
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "max": 100,
           "description": "Confidence that the other person is genuine"
         }
       }
     },
     "exit": {
       "description": "A way between areas",
-      "from":     "location",
-      "to":       "location",
+      "from": "location",
+      "to": "location",
       "directed": true,
       "attributes": {
-        "direction": {"type": "string"}
+        "direction": {
+          "type": "string"
+        }
       }
     }
   },
-
   "derived": {
     "admirer_count": {
-      "over":   "relationships",
-      "where":  {
+      "over": "relationships",
+      "where": {
         "type": "romance",
-        "to":   "player",
-        "attrs": [{"attr": "affection", "op": "gte", "value": 40}]
+        "to": "player",
+        "attrs": [
+          {
+            "attr": "affection",
+            "op": "gte",
+            "value": 40
+          }
+        ]
       },
       "reduce": "count",
       "intent": "how many NPCs have developed meaningful affection for the player"
     },
     "top_admirer": {
-      "over":   "relationships",
-      "where":  {"type": "romance", "to": "player"},
+      "over": "relationships",
+      "where": {
+        "type": "romance",
+        "to": "player"
+      },
       "reduce": "argmax:affection",
       "intent": "the NPC with the highest affection for the player"
     },
     "tension_sources": {
-      "over":   "relationships",
-      "where":  {
+      "over": "relationships",
+      "where": {
         "type": "romance",
-        "to":   "player",
-        "attrs": [{"attr": "tension", "op": "gte", "value": 30}]
+        "to": "player",
+        "attrs": [
+          {
+            "attr": "tension",
+            "op": "gte",
+            "value": 30
+          }
+        ]
       },
       "reduce": "list",
       "intent": "NPCs whose tension with the player is high enough to be a plot force"
     }
   },
-
   "machines": {
     "arc": {
       "description": "The narrative arc of the evening — movement through the gallery and endings",
       "initial": "arrival",
-      "states":  [
-        "arrival", "cocktails", "gallery_floor", "private_room",
-        "left_together", "left_alone", "love_triangle"
+      "states": [
+        "arrival",
+        "cocktails",
+        "gallery_floor",
+        "private_room",
+        "left_together",
+        "left_alone",
+        "love_triangle"
       ],
       "stateMeta": {
         "arrival": {
@@ -137,117 +179,198 @@
           "description": "A quieter anteroom, lit by a single recessed lamp. Someone has followed you in."
         },
         "left_together": {
-          "terminal":    true,
-          "ending":      true,
+          "terminal": true,
+          "ending": true,
           "description": "You leave through the gallery's front door together — coat sleeves just touching — into a city that suddenly feels full of possibility.",
-          "intent":      "reached when one NPC has affection >= 70 and trust >= 50"
+          "intent": "reached when one NPC has affection >= 70 and trust >= 50"
         },
         "left_alone": {
-          "terminal":    true,
-          "ending":      true,
+          "terminal": true,
+          "ending": true,
           "description": "You button your coat at the kerb and hail a cab alone. The evening was beautiful, the art was beautiful — and none of it quite reached you. Next time, perhaps.",
-          "intent":      "reached when the player exits with no NPC at high enough affection"
+          "intent": "reached when the player exits with no NPC at high enough affection"
         },
         "love_triangle": {
-          "terminal":    true,
-          "ending":      true,
+          "terminal": true,
+          "ending": true,
           "description": "Two people catch your eye from across the foyer at the same moment — and catch each other's eyes too. The three of you stand in a charged, impossible triangle. Nobody moves first. You will think about this evening for a long time.",
-          "intent":      "reached when two or more NPCs both have affection >= 60 and tension >= 40"
+          "intent": "reached when two or more NPCs both have affection >= 60 and tension >= 40"
         }
       },
       "transitions": [
         {
-          "id":          "head_to_bar",
-          "from":        "arrival",
-          "to":          "cocktails",
+          "id": "head_to_bar",
+          "from": "arrival",
+          "to": "cocktails",
           "description": "Make your way to the bar and join the early crowd.",
           "effects": [
-            {"op": "record", "text": "You drift toward the bar. Laughter and clattering ice-cubes fill the air.",
-             "tags": ["movement", "arrival"]}
+            {
+              "op": "record",
+              "text": "You drift toward the bar. Laughter and clattering ice-cubes fill the air.",
+              "tags": [
+                "movement",
+                "arrival"
+              ]
+            }
           ]
         },
         {
-          "id":          "move_to_gallery",
-          "from":        "cocktails",
-          "to":          "gallery_floor",
+          "id": "move_to_gallery",
+          "from": "cocktails",
+          "to": "gallery_floor",
           "description": "Slip away from the bar into the main gallery.",
           "effects": [
-            {"op": "record",
-             "text": "The paintings swallow you. Someone nearby says something clever about the brushwork.",
-             "tags": ["movement"]}
+            {
+              "op": "record",
+              "text": "The paintings swallow you. Someone nearby says something clever about the brushwork.",
+              "tags": [
+                "movement"
+              ]
+            }
           ]
         },
         {
-          "id":          "retreat_to_private_room",
-          "from":        "gallery_floor",
-          "to":          "private_room",
+          "id": "retreat_to_private_room",
+          "from": "gallery_floor",
+          "to": "private_room",
           "description": "Slip into the quiet anteroom at the back of the gallery.",
           "guard": {
             "or": [
-              {"target": "rel.romance.celeste.player.affection", "op": "gte", "value": 30},
-              {"target": "rel.romance.rafael.player.affection",  "op": "gte", "value": 30}
+              {
+                "target": "rel.romance.celeste.player.affection",
+                "op": "gte",
+                "value": 30
+              },
+              {
+                "target": "rel.romance.rafael.player.affection",
+                "op": "gte",
+                "value": 30
+              }
             ]
           },
           "effects": [
-            {"op": "record",
-             "text": "The noise fades behind a heavy curtain. The room smells of cedar and old canvas.",
-             "tags": ["movement", "private"]}
+            {
+              "op": "record",
+              "text": "The noise fades behind a heavy curtain. The room smells of cedar and old canvas.",
+              "tags": [
+                "movement",
+                "private"
+              ]
+            }
           ]
         },
         {
-          "id":          "exit_together",
-          "from":        "*",
-          "to":          "left_together",
+          "id": "exit_together",
+          "from": "*",
+          "to": "left_together",
           "description": "Leave the gallery with your closest admirer.",
           "guard": {
             "or": [
               {
                 "and": [
-                  {"target": "rel.romance.celeste.player.affection", "op": "gte", "value": 70},
-                  {"target": "rel.romance.celeste.player.trust",     "op": "gte", "value": 50}
+                  {
+                    "target": "rel.romance.celeste.player.affection",
+                    "op": "gte",
+                    "value": 70
+                  },
+                  {
+                    "target": "rel.romance.celeste.player.trust",
+                    "op": "gte",
+                    "value": 50
+                  }
                 ]
               },
               {
                 "and": [
-                  {"target": "rel.romance.rafael.player.affection",  "op": "gte", "value": 70},
-                  {"target": "rel.romance.rafael.player.trust",      "op": "gte", "value": 50}
+                  {
+                    "target": "rel.romance.rafael.player.affection",
+                    "op": "gte",
+                    "value": 70
+                  },
+                  {
+                    "target": "rel.romance.rafael.player.trust",
+                    "op": "gte",
+                    "value": 50
+                  }
                 ]
               },
               {
                 "and": [
-                  {"target": "rel.romance.dominic.player.affection", "op": "gte", "value": 70},
-                  {"target": "rel.romance.dominic.player.trust",     "op": "gte", "value": 50}
+                  {
+                    "target": "rel.romance.dominic.player.affection",
+                    "op": "gte",
+                    "value": 70
+                  },
+                  {
+                    "target": "rel.romance.dominic.player.trust",
+                    "op": "gte",
+                    "value": 50
+                  }
                 ]
               }
             ]
           },
           "effects": [
-            {"op": "set",    "target": "world.evening_over", "value": true},
-            {"op": "record", "text": "You leave together. The city opens up before you both.",
-             "tags": ["ending", "romance"]}
+            {
+              "op": "set",
+              "target": "world.evening_over",
+              "value": true
+            },
+            {
+              "op": "record",
+              "text": "You leave together. The city opens up before you both.",
+              "tags": [
+                "ending",
+                "romance"
+              ]
+            }
           ]
         },
         {
-          "id":          "exit_triangle",
-          "from":        "*",
-          "to":          "love_triangle",
+          "id": "exit_triangle",
+          "from": "*",
+          "to": "love_triangle",
           "description": "Step toward the door when the room is electrically charged with competing desire.",
           "guard": {
             "and": [
-              {"target": "rel.romance.celeste.player.affection", "op": "gte", "value": 60},
-              {"target": "rel.romance.celeste.player.tension",   "op": "gte", "value": 40},
+              {
+                "target": "rel.romance.celeste.player.affection",
+                "op": "gte",
+                "value": 60
+              },
+              {
+                "target": "rel.romance.celeste.player.tension",
+                "op": "gte",
+                "value": 40
+              },
               {
                 "or": [
                   {
                     "and": [
-                      {"target": "rel.romance.rafael.player.affection",  "op": "gte", "value": 60},
-                      {"target": "rel.romance.rafael.player.tension",    "op": "gte", "value": 40}
+                      {
+                        "target": "rel.romance.rafael.player.affection",
+                        "op": "gte",
+                        "value": 60
+                      },
+                      {
+                        "target": "rel.romance.rafael.player.tension",
+                        "op": "gte",
+                        "value": 40
+                      }
                     ]
                   },
                   {
                     "and": [
-                      {"target": "rel.romance.dominic.player.affection", "op": "gte", "value": 60},
-                      {"target": "rel.romance.dominic.player.tension",   "op": "gte", "value": 40}
+                      {
+                        "target": "rel.romance.dominic.player.affection",
+                        "op": "gte",
+                        "value": 60
+                      },
+                      {
+                        "target": "rel.romance.dominic.player.tension",
+                        "op": "gte",
+                        "value": 40
+                      }
                     ]
                   }
                 ]
@@ -255,399 +378,812 @@
             ]
           },
           "effects": [
-            {"op": "set",    "target": "world.evening_over", "value": true},
-            {"op": "record", "text": "The triangle holds. No one breaks first.", "tags": ["ending", "tension"]}
+            {
+              "op": "set",
+              "target": "world.evening_over",
+              "value": true
+            },
+            {
+              "op": "record",
+              "text": "The triangle holds. No one breaks first.",
+              "tags": [
+                "ending",
+                "tension"
+              ]
+            }
           ]
         },
         {
-          "id":          "exit_alone",
-          "from":        "*",
-          "to":          "left_alone",
+          "id": "exit_alone",
+          "from": "*",
+          "to": "left_alone",
           "description": "Head for the door — the evening is what it was.",
           "guard": {
             "and": [
-              {"target": "rel.romance.celeste.player.affection", "op": "lt", "value": 70},
-              {"target": "rel.romance.rafael.player.affection",  "op": "lt", "value": 70},
-              {"target": "rel.romance.dominic.player.affection", "op": "lt", "value": 70}
+              {
+                "target": "rel.romance.celeste.player.affection",
+                "op": "lt",
+                "value": 70
+              },
+              {
+                "target": "rel.romance.rafael.player.affection",
+                "op": "lt",
+                "value": 70
+              },
+              {
+                "target": "rel.romance.dominic.player.affection",
+                "op": "lt",
+                "value": 70
+              }
             ]
           },
           "effects": [
-            {"op": "set",    "target": "world.evening_over", "value": true},
-            {"op": "record", "text": "You leave alone. A good evening. A quiet cab. Your thoughts your own.",
-             "tags": ["ending", "solitude"]}
+            {
+              "op": "set",
+              "target": "world.evening_over",
+              "value": true
+            },
+            {
+              "op": "record",
+              "text": "You leave alone. A good evening. A quiet cab. Your thoughts your own.",
+              "tags": [
+                "ending",
+                "solitude"
+              ]
+            }
           ]
         }
       ]
     },
-
     "romance_stage": {
       "description": "Per-relationship stage machine — each romance arc carries its own state",
-      "attach": {"to": "relationshipType:romance"},
+      "attach": {
+        "to": "relationshipType:romance"
+      },
       "initial": "strangers",
-      "states":  ["strangers", "acquaintances", "flirting", "smitten"],
+      "states": [
+        "strangers",
+        "acquaintances",
+        "flirting",
+        "smitten"
+      ],
       "transitions": [
         {
-          "id":          "chat",
-          "from":        "strangers",
-          "to":          "strangers",
+          "id": "chat",
+          "from": "strangers",
+          "to": "strangers",
           "description": "Strike up a first real conversation.",
           "effects": [
-            {"op": "inc",    "target": "this.affection", "value": 8},
-            {"op": "inc",    "target": "this.trust",     "value": 5},
-            {"op": "record", "text": "A first real exchange. Something clicks into place.",
-             "tags": ["romance-stage", "conversation"]}
+            {
+              "op": "inc",
+              "target": "this.affection",
+              "value": 8
+            },
+            {
+              "op": "inc",
+              "target": "this.trust",
+              "value": 5
+            },
+            {
+              "op": "record",
+              "text": "A first real exchange. Something clicks into place.",
+              "tags": [
+                "romance-stage",
+                "conversation"
+              ]
+            }
           ]
         },
         {
-          "id":          "warm_up",
-          "from":        "strangers",
-          "to":          "acquaintances",
+          "id": "warm_up",
+          "from": "strangers",
+          "to": "acquaintances",
           "description": "Enough warmth has built — you're no longer strangers.",
-          "guard": {"target": "this.affection", "op": "gte", "value": 10},
+          "guard": {
+            "target": "this.affection",
+            "op": "gte",
+            "value": 10
+          },
           "effects": [
-            {"op": "record", "text": "Something clicks into place — you're no longer strangers.",
-             "tags": ["romance-stage"]}
+            {
+              "op": "record",
+              "text": "Something clicks into place — you're no longer strangers.",
+              "tags": [
+                "romance-stage"
+              ]
+            }
           ]
         },
         {
-          "id":          "flirt",
-          "from":        "acquaintances",
-          "to":          "acquaintances",
+          "id": "flirt",
+          "from": "acquaintances",
+          "to": "acquaintances",
           "description": "Lean into the charged subtext between you.",
           "effects": [
-            {"op": "inc",    "target": "this.affection", "value": 10},
-            {"op": "inc",    "target": "this.tension",   "value": 15},
-            {"op": "record", "text": "You lean into the subtext. The response is encouraging.",
-             "tags": ["romance-stage", "flirt"]}
+            {
+              "op": "inc",
+              "target": "this.affection",
+              "value": 10
+            },
+            {
+              "op": "inc",
+              "target": "this.tension",
+              "value": 15
+            },
+            {
+              "op": "record",
+              "text": "You lean into the subtext. The response is encouraging.",
+              "tags": [
+                "romance-stage",
+                "flirt"
+              ]
+            }
           ]
         },
         {
-          "id":          "confide",
-          "from":        "acquaintances",
-          "to":          "acquaintances",
+          "id": "confide",
+          "from": "acquaintances",
+          "to": "acquaintances",
           "description": "Tell them something true about yourself.",
           "effects": [
-            {"op": "inc",    "target": "this.trust",     "value": 20},
-            {"op": "inc",    "target": "this.affection", "value": 12},
-            {"op": "record", "text": "You say the real thing. They listen in a way that feels rare.",
-             "tags": ["romance-stage", "confide"]}
+            {
+              "op": "inc",
+              "target": "this.trust",
+              "value": 20
+            },
+            {
+              "op": "inc",
+              "target": "this.affection",
+              "value": 12
+            },
+            {
+              "op": "record",
+              "text": "You say the real thing. They listen in a way that feels rare.",
+              "tags": [
+                "romance-stage",
+                "confide"
+              ]
+            }
           ]
         },
         {
-          "id":          "start_flirting",
-          "from":        "acquaintances",
-          "to":          "flirting",
+          "id": "start_flirting",
+          "from": "acquaintances",
+          "to": "flirting",
           "description": "The dynamic tilts unmistakably into flirtation.",
           "guard": {
             "and": [
-              {"target": "this.affection", "op": "gte", "value": 30},
-              {"target": "this.tension",   "op": "gte", "value": 15}
+              {
+                "target": "this.affection",
+                "op": "gte",
+                "value": 30
+              },
+              {
+                "target": "this.tension",
+                "op": "gte",
+                "value": 15
+              }
             ]
           },
           "effects": [
-            {"op": "inc",    "target": "this.affection", "value": 5},
-            {"op": "record", "text": "The subtext becomes text. There's a charge in the air.",
-             "tags": ["romance-stage", "flirt"]}
+            {
+              "op": "inc",
+              "target": "this.affection",
+              "value": 5
+            },
+            {
+              "op": "record",
+              "text": "The subtext becomes text. There's a charge in the air.",
+              "tags": [
+                "romance-stage",
+                "flirt"
+              ]
+            }
           ]
         },
         {
-          "id":          "deep_talk",
-          "from":        "flirting",
-          "to":          "flirting",
+          "id": "deep_talk",
+          "from": "flirting",
+          "to": "flirting",
           "description": "Open up about something that matters to you.",
           "effects": [
-            {"op": "inc",    "target": "this.trust",     "value": 15},
-            {"op": "inc",    "target": "this.affection", "value": 10},
-            {"op": "record", "text": "The conversation goes somewhere neither of you expected.",
-             "tags": ["romance-stage", "confide"]}
+            {
+              "op": "inc",
+              "target": "this.trust",
+              "value": 15
+            },
+            {
+              "op": "inc",
+              "target": "this.affection",
+              "value": 10
+            },
+            {
+              "op": "record",
+              "text": "The conversation goes somewhere neither of you expected.",
+              "tags": [
+                "romance-stage",
+                "confide"
+              ]
+            }
           ]
         },
         {
-          "id":          "charm",
-          "from":        "flirting",
-          "to":          "flirting",
+          "id": "charm",
+          "from": "flirting",
+          "to": "flirting",
           "description": "Turn on the full charm — this needs a certain confidence.",
           "guard": {
             "or": [
-              {"target": "equipped.player.outfit", "op": "ne",  "value": ""},
-              {"target": "entity.player.confidence","op": "gte", "value": 7}
+              {
+                "target": "equipped.player.outfit",
+                "op": "ne",
+                "value": ""
+              },
+              {
+                "target": "entity.player.confidence",
+                "op": "gte",
+                "value": 7
+              }
             ]
           },
           "effects": [
-            {"op": "inc",    "target": "this.affection", "value": 18},
-            {"op": "inc",    "target": "this.trust",     "value": 10},
-            {"op": "record", "text": "Full charm deployed. They forget to keep their guard up.",
-             "tags": ["romance-stage", "charm"]}
+            {
+              "op": "inc",
+              "target": "this.affection",
+              "value": 18
+            },
+            {
+              "op": "inc",
+              "target": "this.trust",
+              "value": 10
+            },
+            {
+              "op": "record",
+              "text": "Full charm deployed. They forget to keep their guard up.",
+              "tags": [
+                "romance-stage",
+                "charm"
+              ]
+            }
           ]
         },
         {
-          "id":          "become_smitten",
-          "from":        "flirting",
-          "to":          "smitten",
+          "id": "become_smitten",
+          "from": "flirting",
+          "to": "smitten",
           "description": "One of you has clearly fallen.",
           "guard": {
             "and": [
-              {"target": "this.affection", "op": "gte", "value": 60},
-              {"target": "this.trust",     "op": "gte", "value": 40}
+              {
+                "target": "this.affection",
+                "op": "gte",
+                "value": 60
+              },
+              {
+                "target": "this.trust",
+                "op": "gte",
+                "value": 40
+              }
             ]
           },
           "effects": [
-            {"op": "inc",    "target": "this.affection", "value": 8},
-            {"op": "inc",    "target": "this.trust",     "value": 5},
-            {"op": "record", "text": "It's unmistakable now. Possibly embarrassing. Definitely real.",
-             "tags": ["romance-stage", "smitten"]}
+            {
+              "op": "inc",
+              "target": "this.affection",
+              "value": 8
+            },
+            {
+              "op": "inc",
+              "target": "this.trust",
+              "value": 5
+            },
+            {
+              "op": "record",
+              "text": "It's unmistakable now. Possibly embarrassing. Definitely real.",
+              "tags": [
+                "romance-stage",
+                "smitten"
+              ]
+            }
           ]
         }
       ]
     }
   },
-
   "triggers": {
     "scene_mingling": {
-      "when":   {"target": "machine.arc.state", "op": "eq", "value": "cocktails"},
-      "once":   true,
+      "when": {
+        "target": "machine.arc.state",
+        "op": "eq",
+        "value": "cocktails"
+      },
+      "once": true,
       "intent": "scene: mingling at the bar",
       "effects": [
-        {"op": "set",    "target": "entity.player.location",  "value": "the_bar"},
-        {"op": "set",    "target": "entity.celeste.location", "value": "the_bar"},
-        {"op": "set",    "target": "entity.rafael.location",  "value": "the_bar"},
-        {"op": "set",    "target": "entity.dominic.location", "value": "the_bar"},
-        {"op": "record", "text": "The party gathers around the bar."}
+        {
+          "op": "set",
+          "target": "entity.player.location",
+          "value": "the_bar"
+        },
+        {
+          "op": "set",
+          "target": "entity.celeste.location",
+          "value": "the_bar"
+        },
+        {
+          "op": "set",
+          "target": "entity.rafael.location",
+          "value": "the_bar"
+        },
+        {
+          "op": "set",
+          "target": "entity.dominic.location",
+          "value": "the_bar"
+        },
+        {
+          "op": "record",
+          "text": "The party gathers around the bar."
+        }
       ]
     },
     "scene_on_the_floor": {
-      "when":   {"target": "machine.arc.state", "op": "eq", "value": "gallery_floor"},
-      "once":   true,
+      "when": {
+        "target": "machine.arc.state",
+        "op": "eq",
+        "value": "gallery_floor"
+      },
+      "once": true,
       "intent": "scene: on the floor",
       "effects": [
-        {"op": "set",    "target": "entity.player.location",  "value": "the_gallery"},
-        {"op": "set",    "target": "entity.celeste.location", "value": "the_gallery"},
-        {"op": "set",    "target": "entity.rafael.location",  "value": "the_terrace"},
-        {"op": "set",    "target": "entity.dominic.location", "value": "the_gallery"},
-        {"op": "record", "text": "The guests drift out onto the gallery floor."}
+        {
+          "op": "set",
+          "target": "entity.player.location",
+          "value": "the_gallery"
+        },
+        {
+          "op": "set",
+          "target": "entity.celeste.location",
+          "value": "the_gallery"
+        },
+        {
+          "op": "set",
+          "target": "entity.rafael.location",
+          "value": "the_terrace"
+        },
+        {
+          "op": "set",
+          "target": "entity.dominic.location",
+          "value": "the_gallery"
+        },
+        {
+          "op": "record",
+          "text": "The guests drift out onto the gallery floor."
+        }
       ]
     },
     "scene_alone_together": {
-      "when":   {"target": "machine.arc.state", "op": "eq", "value": "private_room"},
-      "once":   true,
+      "when": {
+        "target": "machine.arc.state",
+        "op": "eq",
+        "value": "private_room"
+      },
+      "once": true,
       "intent": "scene: alone together",
       "effects": [
-        {"op": "set",    "target": "entity.player.location",  "value": "the_private_room"},
-        {"op": "set",    "target": "entity.celeste.location", "value": "the_private_room"},
-        {"op": "record", "text": "You slip away to the quiet of the private room."}
+        {
+          "op": "set",
+          "target": "entity.player.location",
+          "value": "the_private_room"
+        },
+        {
+          "op": "set",
+          "target": "entity.celeste.location",
+          "value": "the_private_room"
+        },
+        {
+          "op": "record",
+          "text": "You slip away to the quiet of the private room."
+        }
       ]
     }
   },
-
   "beats": {
     "celeste_opens_up": {
-      "text":         "After a pause, Celeste says: 'You know, I almost didn't come tonight. I'm glad I did.' She doesn't explain further. She doesn't need to.",
-      "machineState": {"machine": "arc", "state": "gallery_floor"},
-      "guard":        {
-        "target": "rel.romance.celeste.player.trust", "op": "gte", "value": 20
+      "text": "After a pause, Celeste says: 'You know, I almost didn't come tonight. I'm glad I did.' She doesn't explain further. She doesn't need to.",
+      "machineState": {
+        "machine": "arc",
+        "state": "gallery_floor"
       },
-      "once":         true,
-      "intent":       "fires when trust with Celeste crosses 20"
+      "guard": {
+        "target": "rel.romance.celeste.player.trust",
+        "op": "gte",
+        "value": 20
+      },
+      "once": true,
+      "intent": "fires when trust with Celeste crosses 20"
     },
     "dominic_first_meeting": {
-      "text":         "Dominic Reyes — you've read his name on the catalogue. He's been watching the room with the careful attention of someone who arranged it.",
-      "machineState": {"machine": "arc", "state": "gallery_floor"},
-      "guard":        {
-        "target": "rel.romance.dominic.player.affection", "op": "gt", "value": 0
+      "text": "Dominic Reyes — you've read his name on the catalogue. He's been watching the room with the careful attention of someone who arranged it.",
+      "machineState": {
+        "machine": "arc",
+        "state": "gallery_floor"
       },
-      "once":         true,
-      "intent":       "introduces Dominic; fires once he is first engaged with"
+      "guard": {
+        "target": "rel.romance.dominic.player.affection",
+        "op": "gt",
+        "value": 0
+      },
+      "once": true,
+      "intent": "introduces Dominic; fires once he is first engaged with"
     },
     "triangle_forming": {
-      "text":         "Both Celeste and Rafael catch your eye from opposite sides of the room at the same moment. Neither looks away first.",
-      "machineState": {"machine": "arc", "state": "gallery_floor"},
+      "text": "Both Celeste and Rafael catch your eye from opposite sides of the room at the same moment. Neither looks away first.",
+      "machineState": {
+        "machine": "arc",
+        "state": "gallery_floor"
+      },
       "guard": {
         "and": [
-          {"target": "rel.romance.celeste.player.affection", "op": "gte", "value": 40},
-          {"target": "rel.romance.rafael.player.affection",  "op": "gte", "value": 40}
+          {
+            "target": "rel.romance.celeste.player.affection",
+            "op": "gte",
+            "value": 40
+          },
+          {
+            "target": "rel.romance.rafael.player.affection",
+            "op": "gte",
+            "value": 40
+          }
         ]
       },
-      "once":         true,
-      "intent":       "fires when both Celeste and Rafael are in the 40+ affection zone — triangle crystallises"
+      "once": true,
+      "intent": "fires when both Celeste and Rafael are in the 40+ affection zone — triangle crystallises"
     },
     "private_room_moment": {
-      "text":         "In the hush of the anteroom, the sounds of the party become irrelevant. Whatever is happening in here is the only thing happening.",
-      "machineState": {"machine": "arc", "state": "private_room"},
-      "once":         false,
-      "intent":       "ambient beat — repeatable while in the private room"
+      "text": "In the hush of the anteroom, the sounds of the party become irrelevant. Whatever is happening in here is the only thing happening.",
+      "machineState": {
+        "machine": "arc",
+        "state": "private_room"
+      },
+      "once": false,
+      "intent": "ambient beat — repeatable while in the private room"
     },
     "smitten_threshold": {
-      "text":         "You realise with a small shock that you've stopped noticing the art.",
-      "machineState": {"machine": "arc", "state": "gallery_floor"},
+      "text": "You realise with a small shock that you've stopped noticing the art.",
+      "machineState": {
+        "machine": "arc",
+        "state": "gallery_floor"
+      },
       "guard": {
         "or": [
-          {"target": "rel.romance.celeste.player.affection", "op": "gte", "value": 60},
-          {"target": "rel.romance.rafael.player.affection",  "op": "gte", "value": 60},
-          {"target": "rel.romance.dominic.player.affection", "op": "gte", "value": 60}
+          {
+            "target": "rel.romance.celeste.player.affection",
+            "op": "gte",
+            "value": 60
+          },
+          {
+            "target": "rel.romance.rafael.player.affection",
+            "op": "gte",
+            "value": 60
+          },
+          {
+            "target": "rel.romance.dominic.player.affection",
+            "op": "gte",
+            "value": 60
+          }
         ]
       },
-      "once":         true,
-      "intent":       "fires when any NPC's affection crosses 60"
+      "once": true,
+      "intent": "fires when any NPC's affection crosses 60"
     }
   },
-
   "lore": {
     "ardmore_history": {
-      "title":   "The Ardmore Gallery",
-      "text":    "Founded in 1987 by Miriam Ardmore, a retired set designer who converted a Victorian printworks. The gallery has a reputation for championing artists who make people uncomfortable in productive ways.",
-      "tags":    ["gallery", "history"],
-      "intent":  "gives the setting texture"
+      "title": "The Ardmore Gallery",
+      "text": "Founded in 1987 by Miriam Ardmore, a retired set designer who converted a Victorian printworks. The gallery has a reputation for championing artists who make people uncomfortable in productive ways.",
+      "tags": [
+        "gallery",
+        "history"
+      ],
+      "intent": "gives the setting texture"
     },
     "celeste_background": {
-      "title":   "Celeste Vann",
-      "text":    "A poet and essayist who writes about grief with unusual precision. Three published collections and a habit of saying the true thing at the wrong moment.",
-      "tags":    ["celeste", "background"],
+      "title": "Celeste Vann",
+      "text": "A poet and essayist who writes about grief with unusual precision. Three published collections and a habit of saying the true thing at the wrong moment.",
+      "tags": [
+        "celeste",
+        "background"
+      ],
       "subject": "celeste",
-      "intent":  "deepens Celeste as a character"
+      "intent": "deepens Celeste as a character"
     },
     "rafael_background": {
-      "title":   "Rafael Osei",
-      "text":    "An architect turned critic who has been arguing publicly with the art establishment for a decade. Brilliant, occasionally exhausting, always sincere.",
-      "tags":    ["rafael", "background"],
+      "title": "Rafael Osei",
+      "text": "An architect turned critic who has been arguing publicly with the art establishment for a decade. Brilliant, occasionally exhausting, always sincere.",
+      "tags": [
+        "rafael",
+        "background"
+      ],
       "subject": "rafael",
-      "intent":  "positions Rafael's combativeness as coming from genuine passion"
+      "intent": "positions Rafael's combativeness as coming from genuine passion"
     },
     "dominic_background": {
-      "title":   "Dominic Reyes",
-      "text":    "Curated the Ardmore for five years before anyone noticed him. Quiet in public, volcanic in private. The evening's hanging was his concept.",
-      "tags":    ["dominic", "background", "curator"],
+      "title": "Dominic Reyes",
+      "text": "Curated the Ardmore for five years before anyone noticed him. Quiet in public, volcanic in private. The evening's hanging was his concept.",
+      "tags": [
+        "dominic",
+        "background",
+        "curator"
+      ],
       "subject": "dominic",
-      "intent":  "explains Dominic's reticence and rewards the player who seeks him out"
+      "intent": "explains Dominic's reticence and rewards the player who seeks him out"
     }
   },
-
   "entities": {
     "player": {
-      "type":        "character",
-      "attrs":       {
-        "name":       "You",
+      "type": "character",
+      "attrs": {
+        "name": "You",
         "occupation": "writer",
         "confidence": 6,
-        "location":   "the_bar"
+        "location": "the_bar"
       },
-      "inventory":   {"velvet_jacket": 1},
-      "equipped":    {"outfit": "velvet_jacket"},
+      "inventory": {
+        "velvet_jacket": 1
+      },
+      "equipped": {
+        "outfit": "velvet_jacket"
+      },
       "description": "A writer who accepted this invitation on impulse and is not entirely sure why."
     },
     "celeste": {
-      "type":        "character",
-      "attrs":       {
-        "name":       "Celeste Vann",
+      "type": "character",
+      "attrs": {
+        "name": "Celeste Vann",
         "occupation": "poet",
         "confidence": 7,
-        "location":   "the_bar"
+        "location": "the_bar"
       },
       "description": "Stands near a large abstract oil, glass of red wine at her lips, reading the label rather than the painting."
     },
     "rafael": {
-      "type":        "character",
-      "attrs":       {
-        "name":       "Rafael Osei",
+      "type": "character",
+      "attrs": {
+        "name": "Rafael Osei",
         "occupation": "critic",
         "confidence": 8,
-        "location":   "the_bar"
+        "location": "the_bar"
       },
       "description": "Talks with his hands. Currently holding court in front of a bronze sculpture, champagne forgotten on the plinth behind him."
     },
     "dominic": {
-      "type":        "character",
-      "attrs":       {
-        "name":       "Dominic Reyes",
+      "type": "character",
+      "attrs": {
+        "name": "Dominic Reyes",
         "occupation": "curator",
         "confidence": 4,
-        "location":   "the_bar"
+        "location": "the_bar"
       },
       "description": "Stands near the back, slightly apart, watching the crowd with the intensity of someone who arranged it."
     },
     "the_bar": {
-      "type":        "location",
-      "attrs":       {"name": "The Bar"},
+      "type": "location",
+      "attrs": {
+        "name": "The Bar"
+      },
       "description": "A long marble bar running the length of the entrance room."
     },
     "the_gallery": {
-      "type":        "location",
-      "attrs":       {"name": "The Gallery Floor"},
+      "type": "location",
+      "attrs": {
+        "name": "The Gallery Floor"
+      },
       "description": "The main exhibition space — high ceilings, bold canvases, champagne flutes catching the light."
     },
     "the_terrace": {
-      "type":        "location",
-      "attrs":       {"name": "The Terrace"},
+      "type": "location",
+      "attrs": {
+        "name": "The Terrace"
+      },
       "description": "A narrow stone terrace overlooking the street, used for fresh air and quiet conversations."
     },
     "the_private_room": {
-      "type":        "location",
-      "attrs":       {"name": "The Private Room"},
+      "type": "location",
+      "attrs": {
+        "name": "The Private Room"
+      },
       "description": "A quieter anteroom at the back, lit by a single recessed lamp."
     }
   },
-
   "relationships": [
-    {"type": "romance", "from": "celeste",  "to": "player",  "attrs": {"affection": 0, "tension": 5,  "trust": 0}},
-    {"type": "romance", "from": "rafael",   "to": "player",  "attrs": {"affection": 0, "tension": 8,  "trust": 0}},
-    {"type": "romance", "from": "dominic",  "to": "player",  "attrs": {"affection": 0, "tension": 0,  "trust": 0}},
-    {"type": "romance", "from": "player",   "to": "celeste", "attrs": {"affection": 5, "tension": 5,  "trust": 5}},
-    {"type": "romance", "from": "player",   "to": "rafael",  "attrs": {"affection": 5, "tension": 8,  "trust": 5}},
-    {"type": "romance", "from": "player",   "to": "dominic", "attrs": {"affection": 0, "tension": 0,  "trust": 0}},
-    {"type": "exit", "from": "the_bar",     "to": "the_gallery",      "attrs": {"direction": "into the gallery"}},
-    {"type": "exit", "from": "the_gallery", "to": "the_bar",          "attrs": {"direction": "back to the bar"}},
-    {"type": "exit", "from": "the_gallery", "to": "the_terrace",      "attrs": {"direction": "onto the terrace"}},
-    {"type": "exit", "from": "the_terrace", "to": "the_gallery",      "attrs": {"direction": "back inside"}},
-    {"type": "exit", "from": "the_gallery", "to": "the_private_room", "attrs": {"direction": "into the private room"}},
-    {"type": "exit", "from": "the_private_room", "to": "the_gallery", "attrs": {"direction": "out to the gallery"}}
+    {
+      "type": "romance",
+      "from": "celeste",
+      "to": "player",
+      "attrs": {
+        "affection": 0,
+        "tension": 5,
+        "trust": 0
+      }
+    },
+    {
+      "type": "romance",
+      "from": "rafael",
+      "to": "player",
+      "attrs": {
+        "affection": 0,
+        "tension": 8,
+        "trust": 0
+      }
+    },
+    {
+      "type": "romance",
+      "from": "dominic",
+      "to": "player",
+      "attrs": {
+        "affection": 0,
+        "tension": 0,
+        "trust": 0
+      }
+    },
+    {
+      "type": "romance",
+      "from": "player",
+      "to": "celeste",
+      "attrs": {
+        "affection": 5,
+        "tension": 5,
+        "trust": 5
+      }
+    },
+    {
+      "type": "romance",
+      "from": "player",
+      "to": "rafael",
+      "attrs": {
+        "affection": 5,
+        "tension": 8,
+        "trust": 5
+      }
+    },
+    {
+      "type": "romance",
+      "from": "player",
+      "to": "dominic",
+      "attrs": {
+        "affection": 0,
+        "tension": 0,
+        "trust": 0
+      }
+    },
+    {
+      "type": "exit",
+      "from": "the_bar",
+      "to": "the_gallery",
+      "attrs": {
+        "direction": "into the gallery"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "the_gallery",
+      "to": "the_bar",
+      "attrs": {
+        "direction": "back to the bar"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "the_gallery",
+      "to": "the_terrace",
+      "attrs": {
+        "direction": "onto the terrace"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "the_terrace",
+      "to": "the_gallery",
+      "attrs": {
+        "direction": "back inside"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "the_gallery",
+      "to": "the_private_room",
+      "attrs": {
+        "direction": "into the private room"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "the_private_room",
+      "to": "the_gallery",
+      "attrs": {
+        "direction": "out to the gallery"
+      }
+    }
   ],
-
   "_editor": {
     "map": {
       "placeType": "location",
-      "exitType":  "exit",
+      "exitType": "exit",
       "moverAttr": "location",
       "cell": 28,
       "rooms": {
-        "the_terrace":      {"x": 9, "y": 1, "w": 4, "h": 3},
-        "the_bar":          {"x": 3, "y": 6, "w": 4, "h": 3},
-        "the_gallery":      {"x": 9, "y": 6, "w": 4, "h": 3},
-        "the_private_room": {"x": 15, "y": 6, "w": 4, "h": 3}
+        "the_terrace": {
+          "x": -2,
+          "y": -4,
+          "w": 4,
+          "h": 3
+        },
+        "the_bar": {
+          "x": -8,
+          "y": 1,
+          "w": 4,
+          "h": 3
+        },
+        "the_gallery": {
+          "x": -2,
+          "y": 1,
+          "w": 4,
+          "h": 3
+        },
+        "the_private_room": {
+          "x": 4,
+          "y": 1,
+          "w": 4,
+          "h": 3
+        }
       },
       "tokens": {
-        "player":  {"x": 0, "y": 1},
-        "celeste": {"x": 1, "y": 1},
-        "rafael":  {"x": 2, "y": 1},
-        "dominic": {"x": 0, "y": 2}
+        "player": {
+          "x": 0,
+          "y": 1
+        },
+        "celeste": {
+          "x": 1,
+          "y": 1
+        },
+        "rafael": {
+          "x": 2,
+          "y": 1
+        },
+        "dominic": {
+          "x": 0,
+          "y": 2
+        }
       }
     },
     "scenes": {
       "mingling": {
-        "trigger":    "scene_mingling",
-        "arcState":   "cocktails",
+        "trigger": "scene_mingling",
+        "arcState": "cocktails",
         "placements": {
-          "player":  "the_bar",
+          "player": "the_bar",
           "celeste": "the_bar",
-          "rafael":  "the_bar",
+          "rafael": "the_bar",
           "dominic": "the_bar"
         },
         "record": "The party gathers around the bar."
       },
       "on_the_floor": {
-        "trigger":    "scene_on_the_floor",
-        "arcState":   "gallery_floor",
+        "trigger": "scene_on_the_floor",
+        "arcState": "gallery_floor",
         "placements": {
-          "player":  "the_gallery",
+          "player": "the_gallery",
           "celeste": "the_gallery",
-          "rafael":  "the_terrace",
+          "rafael": "the_terrace",
           "dominic": "the_gallery"
         },
         "record": "The guests drift out onto the gallery floor."
       },
       "alone_together": {
-        "trigger":    "scene_alone_together",
-        "arcState":   "private_room",
+        "trigger": "scene_alone_together",
+        "arcState": "private_room",
         "placements": {
-          "player":  "the_private_room",
+          "player": "the_private_room",
           "celeste": "the_private_room"
         },
         "record": "You slip away to the quiet of the private room."

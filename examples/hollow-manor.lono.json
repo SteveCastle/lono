@@ -4,444 +4,953 @@
   "version": 1,
   "description": "Explore the abandoned Ashby Manor to unravel the mystery of Lord Ashby's death. Gather clues, discover hidden lore, and accuse the true killer — or condemn an innocent.",
   "intent": "gothic mystery; methodical exploration rewards careful observation; wrong accusation ends in shame",
-
   "world": {
-    "accusation_made": {"type": "bool",   "default": false},
-    "accused":         {"type": "string", "default": ""},
-    "portrait_lit":    {"type": "bool",   "default": false}
+    "accusation_made": {
+      "type": "bool",
+      "default": false
+    },
+    "accused": {
+      "type": "string",
+      "default": ""
+    },
+    "portrait_lit": {
+      "type": "bool",
+      "default": false
+    }
   },
-
   "entityTypes": {
     "location": {
       "description": "A room or area in Ashby Manor.",
       "attributes": {
-        "name":    {"type": "string"},
-        "visited": {"type": "bool", "default": false}
+        "name": {
+          "type": "string"
+        },
+        "visited": {
+          "type": "bool",
+          "default": false
+        }
       }
     },
     "suspect": {
       "description": "A person of interest in the manor investigation.",
       "attributes": {
-        "name":     {"type": "string"},
-        "location": {"type": "ref", "refType": "location"},
-        "alibi":    {"type": "bool", "default": false}
+        "name": {
+          "type": "string"
+        },
+        "location": {
+          "type": "ref",
+          "refType": "location"
+        },
+        "alibi": {
+          "type": "bool",
+          "default": false
+        }
       }
     },
     "detective": {
       "description": "The player character.",
       "attributes": {
-        "name":     {"type": "string"},
-        "location": {"type": "ref",  "refType": "location"},
-        "clues":    {"type": "set",  "elem": "string"},
-        "insight":  {"type": "int",  "default": 0, "min": 0, "max": 10}
+        "name": {
+          "type": "string"
+        },
+        "location": {
+          "type": "ref",
+          "refType": "location"
+        },
+        "clues": {
+          "type": "set",
+          "elem": "string"
+        },
+        "insight": {
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "max": 10
+        }
       }
     }
   },
-
   "relationshipTypes": {
     "exit": {
-      "from":       "location",
-      "to":         "location",
-      "directed":   true,
+      "from": "location",
+      "to": "location",
+      "directed": true,
       "attributes": {
-        "direction": {"type": "string"},
-        "locked":    {"type": "bool", "default": false}
+        "direction": {
+          "type": "string"
+        },
+        "locked": {
+          "type": "bool",
+          "default": false
+        }
       }
     }
   },
-
   "derived": {
     "exits_here": {
-      "over":   "relationships",
-      "where":  {"type": "exit", "from": {"$path": "entity.detective.location"}},
+      "over": "relationships",
+      "where": {
+        "type": "exit",
+        "from": {
+          "$path": "entity.detective.location"
+        }
+      },
       "reduce": "list",
       "intent": "destination ids reachable from the detective's current location"
     },
     "here": {
-      "over":  "entities",
+      "over": "entities",
       "where": {
-        "type":  "suspect",
-        "attrs": [{"attr": "location", "op": "eq", "value": {"$path": "entity.detective.location"}}]
+        "type": "suspect",
+        "attrs": [
+          {
+            "attr": "location",
+            "op": "eq",
+            "value": {
+              "$path": "entity.detective.location"
+            }
+          }
+        ]
       },
       "reduce": "list",
       "intent": "suspect ids sharing the detective's current location"
     }
   },
-
   "lore": {
     "manor_history": {
-      "title":   "Ashby Manor — A History of Blood and Coin",
-      "text":    "Built in 1743 by merchant-lord Aldous Ashby, the manor passed to his heirs through war, scandal, and ruin. The current Lord Reginald Ashby was found dead in his library last Tuesday. No blade, no poison — just a stopped heart and a shattered portrait on the floor.",
-      "tags":    ["manor", "history", "victim"],
+      "title": "Ashby Manor — A History of Blood and Coin",
+      "text": "Built in 1743 by merchant-lord Aldous Ashby, the manor passed to his heirs through war, scandal, and ruin. The current Lord Reginald Ashby was found dead in his library last Tuesday. No blade, no poison — just a stopped heart and a shattered portrait on the floor.",
+      "tags": [
+        "manor",
+        "history",
+        "victim"
+      ],
       "subject": "foyer",
-      "when":    "1743 — present"
+      "when": "1743 — present"
     },
     "portrait_secret": {
-      "title":   "The Covered Portrait",
-      "text":    "The draped canvas in the gallery hides a portrait of Lady Isabelle Ashby, Reginald's estranged wife. She was painted holding a small vial — the manor physician's registry lists belladonna dispensed to 'I.A.' two weeks before the death.",
-      "tags":    ["portrait", "isabelle", "clue"],
+      "title": "The Covered Portrait",
+      "text": "The draped canvas in the gallery hides a portrait of Lady Isabelle Ashby, Reginald's estranged wife. She was painted holding a small vial — the manor physician's registry lists belladonna dispensed to 'I.A.' two weeks before the death.",
+      "tags": [
+        "portrait",
+        "isabelle",
+        "clue"
+      ],
       "subject": "gallery"
     },
     "victims_background": {
-      "title":   "Lord Reginald Ashby — A Character Study",
-      "text":    "Reginald Ashby was known for blackmail. His private journal — locked in the library cabinet — held damning correspondence. Among his victims: the butler Morse, whose gambling debts Reginald had bought. Morse had motive, means, and access to every room.",
-      "tags":    ["victim", "morse", "motive"],
+      "title": "Lord Reginald Ashby — A Character Study",
+      "text": "Reginald Ashby was known for blackmail. His private journal — locked in the library cabinet — held damning correspondence. Among his victims: the butler Morse, whose gambling debts Reginald had bought. Morse had motive, means, and access to every room.",
+      "tags": [
+        "victim",
+        "morse",
+        "motive"
+      ],
       "subject": "library"
     },
     "cellar_ledger": {
-      "title":   "The Hidden Ledger",
-      "text":    "Behind the wine-rack in the cellar sits a ledger of payments — all signed M.A. Morse. Payments to an apothecary for 'digestive aids'. The apothecary's stamp matches the vial found near Lord Ashby's body.",
-      "tags":    ["cellar", "morse", "poison", "evidence"],
+      "title": "The Hidden Ledger",
+      "text": "Behind the wine-rack in the cellar sits a ledger of payments — all signed M.A. Morse. Payments to an apothecary for 'digestive aids'. The apothecary's stamp matches the vial found near Lord Ashby's body.",
+      "tags": [
+        "cellar",
+        "morse",
+        "poison",
+        "evidence"
+      ],
       "subject": "cellar"
     }
   },
-
   "beats": {
     "enter_library": {
-      "text":         "Dust motes swirl in the lamplight. Shelves of leather-bound volumes press close; a cabinet with a broken lock hangs open.",
-      "machineState": {"machine": "arc", "state": "exploring"},
-      "guard":        {"target": "entity.detective.location", "op": "eq", "value": "library"},
-      "once":         true,
-      "intent":       "atmospheric beat when the detective first enters the library"
+      "text": "Dust motes swirl in the lamplight. Shelves of leather-bound volumes press close; a cabinet with a broken lock hangs open.",
+      "machineState": {
+        "machine": "arc",
+        "state": "exploring"
+      },
+      "guard": {
+        "target": "entity.detective.location",
+        "op": "eq",
+        "value": "library"
+      },
+      "once": true,
+      "intent": "atmospheric beat when the detective first enters the library"
     },
     "enter_cellar": {
-      "text":         "The cellar air is cold and damp. Wine-racks line the walls. At the far end, behind a tipped rack, something catches the light.",
-      "machineState": {"machine": "arc", "state": "exploring"},
-      "guard":        {"target": "entity.detective.location", "op": "eq", "value": "cellar"},
-      "once":         true,
-      "intent":       "atmospheric beat on first cellar visit"
+      "text": "The cellar air is cold and damp. Wine-racks line the walls. At the far end, behind a tipped rack, something catches the light.",
+      "machineState": {
+        "machine": "arc",
+        "state": "exploring"
+      },
+      "guard": {
+        "target": "entity.detective.location",
+        "op": "eq",
+        "value": "cellar"
+      },
+      "once": true,
+      "intent": "atmospheric beat on first cellar visit"
     },
     "portrait_unveiled": {
-      "text":         "You pull the dustsheet aside. Lady Isabelle stares back — young, beautiful, and holding something in her painted hand. A vial.",
-      "machineState": {"machine": "arc", "state": "exploring"},
-      "guard":        {"target": "world.portrait_lit", "op": "eq", "value": true},
-      "once":         true,
-      "intent":       "beat triggered after the portrait is lit and examined"
+      "text": "You pull the dustsheet aside. Lady Isabelle stares back — young, beautiful, and holding something in her painted hand. A vial.",
+      "machineState": {
+        "machine": "arc",
+        "state": "exploring"
+      },
+      "guard": {
+        "target": "world.portrait_lit",
+        "op": "eq",
+        "value": true
+      },
+      "once": true,
+      "intent": "beat triggered after the portrait is lit and examined"
     },
     "enough_clues": {
-      "text":         "You have gathered enough evidence. The pattern is clear — the pieces fall into place. Someone in this house killed Reginald Ashby.",
-      "machineState": {"machine": "arc", "state": "exploring"},
-      "guard":        {"target": "len.entity.detective.clues", "op": "gte", "value": 3},
-      "once":         true,
-      "intent":       "hint that the player has enough to accuse"
+      "text": "You have gathered enough evidence. The pattern is clear — the pieces fall into place. Someone in this house killed Reginald Ashby.",
+      "machineState": {
+        "machine": "arc",
+        "state": "exploring"
+      },
+      "guard": {
+        "target": "len.entity.detective.clues",
+        "op": "gte",
+        "value": 3
+      },
+      "once": true,
+      "intent": "hint that the player has enough to accuse"
     }
   },
-
   "machines": {
     "arc": {
       "initial": "exploring",
-      "states":  ["exploring", "solved", "wrong_accusation"],
+      "states": [
+        "exploring",
+        "solved",
+        "wrong_accusation"
+      ],
       "stateMeta": {
         "exploring": {
           "description": "The manor breathes around you. Something wicked happened here.",
-          "intent":      "active exploration phase"
+          "intent": "active exploration phase"
         },
         "solved": {
-          "terminal":    true,
-          "ending":      true,
+          "terminal": true,
+          "ending": true,
           "description": "The constable arrives. You lay out the evidence — the ledger, the vial, the portrait. Morse is led away in irons. Justice, cold and final.",
-          "intent":      "correct accusation ending: accused Morse with 3+ clues"
+          "intent": "correct accusation ending: accused Morse with 3+ clues"
         },
         "wrong_accusation": {
-          "terminal":    true,
-          "ending":      true,
+          "terminal": true,
+          "ending": true,
           "description": "The constable listens. Then laughs. The evidence doesn't support it — you've accused an innocent. Your reputation as a detective is in ruins.",
-          "intent":      "bad ending: accused the wrong person or with too few clues"
+          "intent": "bad ending: accused the wrong person or with too few clues"
         }
       },
       "transitions": [
         {
-          "id":          "move_to_library",
-          "from":        "exploring",
-          "to":          "exploring",
+          "id": "move_to_library",
+          "from": "exploring",
+          "to": "exploring",
           "description": "Go to the library.",
           "guard": {
             "target": "entity.detective.location",
-            "op":     "in",
-            "value":  ["foyer", "hall"]
+            "op": "in",
+            "value": [
+              "foyer",
+              "hall"
+            ]
           },
           "effects": [
-            {"op": "move",   "entity": "detective", "to": "library", "attr": "location", "via": "exit"},
-            {"op": "set",    "target": "entity.library.visited", "value": true},
-            {"op": "record", "text": "You enter the library.", "tags": ["move", "library"]}
+            {
+              "op": "move",
+              "entity": "detective",
+              "to": "library",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "set",
+              "target": "entity.library.visited",
+              "value": true
+            },
+            {
+              "op": "record",
+              "text": "You enter the library.",
+              "tags": [
+                "move",
+                "library"
+              ]
+            }
           ]
         },
         {
-          "id":          "move_to_gallery",
-          "from":        "exploring",
-          "to":          "exploring",
+          "id": "move_to_gallery",
+          "from": "exploring",
+          "to": "exploring",
           "description": "Go to the gallery.",
           "guard": {
             "target": "entity.detective.location",
-            "op":     "in",
-            "value":  ["foyer", "hall"]
+            "op": "in",
+            "value": [
+              "foyer",
+              "hall"
+            ]
           },
           "effects": [
-            {"op": "move",   "entity": "detective", "to": "gallery", "attr": "location", "via": "exit"},
-            {"op": "set",    "target": "entity.gallery.visited", "value": true},
-            {"op": "record", "text": "You enter the gallery.", "tags": ["move", "gallery"]}
+            {
+              "op": "move",
+              "entity": "detective",
+              "to": "gallery",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "set",
+              "target": "entity.gallery.visited",
+              "value": true
+            },
+            {
+              "op": "record",
+              "text": "You enter the gallery.",
+              "tags": [
+                "move",
+                "gallery"
+              ]
+            }
           ]
         },
         {
-          "id":          "move_to_cellar",
-          "from":        "exploring",
-          "to":          "exploring",
+          "id": "move_to_cellar",
+          "from": "exploring",
+          "to": "exploring",
           "description": "Descend to the cellar.",
           "guard": {
             "and": [
-              {"target": "entity.detective.location", "op": "in",       "value": ["hall", "kitchen"]},
-              {"target": "entity.detective.clues",    "op": "contains", "value": "cellar_key"}
+              {
+                "target": "entity.detective.location",
+                "op": "in",
+                "value": [
+                  "hall",
+                  "kitchen"
+                ]
+              },
+              {
+                "target": "entity.detective.clues",
+                "op": "contains",
+                "value": "cellar_key"
+              }
             ]
           },
           "effects": [
-            {"op": "move",   "entity": "detective", "to": "cellar", "attr": "location", "via": "exit"},
-            {"op": "set",    "target": "entity.cellar.visited", "value": true},
-            {"op": "record", "text": "Key in hand, you unlock the cellar door and descend.", "tags": ["move", "cellar"]}
+            {
+              "op": "move",
+              "entity": "detective",
+              "to": "cellar",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "set",
+              "target": "entity.cellar.visited",
+              "value": true
+            },
+            {
+              "op": "record",
+              "text": "Key in hand, you unlock the cellar door and descend.",
+              "tags": [
+                "move",
+                "cellar"
+              ]
+            }
           ]
         },
         {
-          "id":          "move_to_foyer",
-          "from":        "exploring",
-          "to":          "exploring",
+          "id": "move_to_foyer",
+          "from": "exploring",
+          "to": "exploring",
           "description": "Return to the foyer.",
           "guard": {
             "target": "entity.detective.location",
-            "op":     "in",
-            "value":  ["library", "gallery", "hall", "kitchen"]
-          },
-          "effects": [
-            {"op": "move",   "entity": "detective", "to": "foyer", "attr": "location", "via": "exit"},
-            {"op": "record", "text": "You return to the foyer.", "tags": ["move", "foyer"]}
-          ]
-        },
-        {
-          "id":          "move_to_hall",
-          "from":        "exploring",
-          "to":          "exploring",
-          "description": "Go to the great hall.",
-          "guard": {
-            "target": "entity.detective.location",
-            "op":     "in",
-            "value":  ["foyer", "library", "gallery", "kitchen", "cellar"]
-          },
-          "effects": [
-            {"op": "move",   "entity": "detective", "to": "hall", "attr": "location", "via": "exit"},
-            {"op": "record", "text": "You cross into the great hall.", "tags": ["move", "hall"]}
-          ]
-        },
-        {
-          "id":          "move_to_kitchen",
-          "from":        "exploring",
-          "to":          "exploring",
-          "description": "Go to the kitchen.",
-          "guard": {
-            "target": "entity.detective.location",
-            "op":     "in",
-            "value":  ["hall", "cellar"]
-          },
-          "effects": [
-            {"op": "move",   "entity": "detective", "to": "kitchen", "attr": "location", "via": "exit"},
-            {"op": "record", "text": "You step into the kitchen.", "tags": ["move", "kitchen"]}
-          ]
-        },
-        {
-          "id":          "examine_foyer",
-          "from":        "exploring",
-          "to":          "exploring",
-          "description": "Examine the foyer — manor entry hall with guest ledger.",
-          "guard": {
-            "target": "entity.detective.location", "op": "eq", "value": "foyer"
-          },
-          "effects": [
-            {"op": "discover", "lore": "manor_history"},
-            {"op": "add_to",   "target": "entity.detective.clues", "value": "guest_ledger"},
-            {"op": "inc",      "target": "entity.detective.insight", "value": 1},
-            {"op": "record",   "text": "The guest ledger shows Lord Ashby had only one visitor the night he died: M. Morse.", "tags": ["examine", "foyer", "clue"]}
-          ]
-        },
-        {
-          "id":          "examine_library",
-          "from":        "exploring",
-          "to":          "exploring",
-          "description": "Examine the library cabinet — search the broken lock.",
-          "guard": {
-            "target": "entity.detective.location", "op": "eq", "value": "library"
-          },
-          "effects": [
-            {"op": "discover", "lore": "victims_background"},
-            {"op": "add_to",   "target": "entity.detective.clues", "value": "blackmail_journal"},
-            {"op": "add_to",   "target": "entity.detective.clues", "value": "cellar_key"},
-            {"op": "inc",      "target": "entity.detective.insight", "value": 2},
-            {"op": "record",   "text": "Inside the cabinet: a journal full of blackmail letters, and a tagged cellar key.", "tags": ["examine", "library", "clue"]}
-          ]
-        },
-        {
-          "id":          "examine_gallery",
-          "from":        "exploring",
-          "to":          "exploring",
-          "description": "Examine the gallery — pull the dustsheet from the covered portrait.",
-          "guard": {
-            "target": "entity.detective.location", "op": "eq", "value": "gallery"
-          },
-          "effects": [
-            {"op": "set",      "target": "world.portrait_lit", "value": true},
-            {"op": "discover", "lore": "portrait_secret"},
-            {"op": "add_to",   "target": "entity.detective.clues", "value": "isabelle_vial_portrait"},
-            {"op": "inc",      "target": "entity.detective.insight", "value": 2},
-            {"op": "record",   "text": "Lady Isabelle's portrait — she holds a vial of belladonna. A prescription two weeks before the death.", "tags": ["examine", "gallery", "clue"]}
-          ]
-        },
-        {
-          "id":          "examine_cellar",
-          "from":        "exploring",
-          "to":          "exploring",
-          "description": "Search the cellar — move the tipped wine rack.",
-          "guard": {
-            "target": "entity.detective.location", "op": "eq", "value": "cellar"
-          },
-          "effects": [
-            {"op": "discover", "lore": "cellar_ledger"},
-            {"op": "add_to",   "target": "entity.detective.clues", "value": "morse_payment_ledger"},
-            {"op": "inc",      "target": "entity.detective.insight", "value": 3},
-            {"op": "record",   "text": "Behind the rack: a payment ledger. Morse paid an apothecary for 'digestive aids' — the same stamp as the vial by the body.", "tags": ["examine", "cellar", "clue"]}
-          ]
-        },
-        {
-          "id":          "accuse_morse",
-          "from":        "exploring",
-          "to":          "solved",
-          "description": "Accuse Morse — the butler with motive, means, and access.",
-          "guard": {
-            "and": [
-              {"target": "len.entity.detective.clues",       "op": "gte",      "value": 3},
-              {"target": "entity.detective.clues",           "op": "contains", "value": "morse_payment_ledger"},
-              {"target": "entity.detective.clues",           "op": "contains", "value": "blackmail_journal"}
+            "op": "in",
+            "value": [
+              "library",
+              "gallery",
+              "hall",
+              "kitchen"
             ]
           },
           "effects": [
-            {"op": "set",    "target": "world.accusation_made", "value": true},
-            {"op": "set",    "target": "world.accused",         "value": "morse"},
-            {"op": "record", "text":   "You lay out the evidence: the ledger, the journal, the vial. Morse killed Lord Ashby.", "tags": ["accuse", "morse", "ending"]}
+            {
+              "op": "move",
+              "entity": "detective",
+              "to": "foyer",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "record",
+              "text": "You return to the foyer.",
+              "tags": [
+                "move",
+                "foyer"
+              ]
+            }
           ]
         },
         {
-          "id":          "accuse_isabelle",
-          "from":        "exploring",
-          "to":          "wrong_accusation",
-          "description": "Accuse Lady Isabelle — the estranged wife.",
+          "id": "move_to_hall",
+          "from": "exploring",
+          "to": "exploring",
+          "description": "Go to the great hall.",
           "guard": {
-            "target": "entity.detective.clues", "op": "contains", "value": "isabelle_vial_portrait"
+            "target": "entity.detective.location",
+            "op": "in",
+            "value": [
+              "foyer",
+              "library",
+              "gallery",
+              "kitchen",
+              "cellar"
+            ]
           },
           "effects": [
-            {"op": "set",    "target": "world.accusation_made", "value": true},
-            {"op": "set",    "target": "world.accused",         "value": "isabelle"},
-            {"op": "record", "text":   "You accuse Lady Isabelle — the portrait seemed damning. But the vial was never prescribed to her. The constable finds no case.", "tags": ["accuse", "isabelle", "wrong", "ending"]}
+            {
+              "op": "move",
+              "entity": "detective",
+              "to": "hall",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "record",
+              "text": "You cross into the great hall.",
+              "tags": [
+                "move",
+                "hall"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "move_to_kitchen",
+          "from": "exploring",
+          "to": "exploring",
+          "description": "Go to the kitchen.",
+          "guard": {
+            "target": "entity.detective.location",
+            "op": "in",
+            "value": [
+              "hall",
+              "cellar"
+            ]
+          },
+          "effects": [
+            {
+              "op": "move",
+              "entity": "detective",
+              "to": "kitchen",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "record",
+              "text": "You step into the kitchen.",
+              "tags": [
+                "move",
+                "kitchen"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "examine_foyer",
+          "from": "exploring",
+          "to": "exploring",
+          "description": "Examine the foyer — manor entry hall with guest ledger.",
+          "guard": {
+            "target": "entity.detective.location",
+            "op": "eq",
+            "value": "foyer"
+          },
+          "effects": [
+            {
+              "op": "discover",
+              "lore": "manor_history"
+            },
+            {
+              "op": "add_to",
+              "target": "entity.detective.clues",
+              "value": "guest_ledger"
+            },
+            {
+              "op": "inc",
+              "target": "entity.detective.insight",
+              "value": 1
+            },
+            {
+              "op": "record",
+              "text": "The guest ledger shows Lord Ashby had only one visitor the night he died: M. Morse.",
+              "tags": [
+                "examine",
+                "foyer",
+                "clue"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "examine_library",
+          "from": "exploring",
+          "to": "exploring",
+          "description": "Examine the library cabinet — search the broken lock.",
+          "guard": {
+            "target": "entity.detective.location",
+            "op": "eq",
+            "value": "library"
+          },
+          "effects": [
+            {
+              "op": "discover",
+              "lore": "victims_background"
+            },
+            {
+              "op": "add_to",
+              "target": "entity.detective.clues",
+              "value": "blackmail_journal"
+            },
+            {
+              "op": "add_to",
+              "target": "entity.detective.clues",
+              "value": "cellar_key"
+            },
+            {
+              "op": "inc",
+              "target": "entity.detective.insight",
+              "value": 2
+            },
+            {
+              "op": "record",
+              "text": "Inside the cabinet: a journal full of blackmail letters, and a tagged cellar key.",
+              "tags": [
+                "examine",
+                "library",
+                "clue"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "examine_gallery",
+          "from": "exploring",
+          "to": "exploring",
+          "description": "Examine the gallery — pull the dustsheet from the covered portrait.",
+          "guard": {
+            "target": "entity.detective.location",
+            "op": "eq",
+            "value": "gallery"
+          },
+          "effects": [
+            {
+              "op": "set",
+              "target": "world.portrait_lit",
+              "value": true
+            },
+            {
+              "op": "discover",
+              "lore": "portrait_secret"
+            },
+            {
+              "op": "add_to",
+              "target": "entity.detective.clues",
+              "value": "isabelle_vial_portrait"
+            },
+            {
+              "op": "inc",
+              "target": "entity.detective.insight",
+              "value": 2
+            },
+            {
+              "op": "record",
+              "text": "Lady Isabelle's portrait — she holds a vial of belladonna. A prescription two weeks before the death.",
+              "tags": [
+                "examine",
+                "gallery",
+                "clue"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "examine_cellar",
+          "from": "exploring",
+          "to": "exploring",
+          "description": "Search the cellar — move the tipped wine rack.",
+          "guard": {
+            "target": "entity.detective.location",
+            "op": "eq",
+            "value": "cellar"
+          },
+          "effects": [
+            {
+              "op": "discover",
+              "lore": "cellar_ledger"
+            },
+            {
+              "op": "add_to",
+              "target": "entity.detective.clues",
+              "value": "morse_payment_ledger"
+            },
+            {
+              "op": "inc",
+              "target": "entity.detective.insight",
+              "value": 3
+            },
+            {
+              "op": "record",
+              "text": "Behind the rack: a payment ledger. Morse paid an apothecary for 'digestive aids' — the same stamp as the vial by the body.",
+              "tags": [
+                "examine",
+                "cellar",
+                "clue"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "accuse_morse",
+          "from": "exploring",
+          "to": "solved",
+          "description": "Accuse Morse — the butler with motive, means, and access.",
+          "guard": {
+            "and": [
+              {
+                "target": "len.entity.detective.clues",
+                "op": "gte",
+                "value": 3
+              },
+              {
+                "target": "entity.detective.clues",
+                "op": "contains",
+                "value": "morse_payment_ledger"
+              },
+              {
+                "target": "entity.detective.clues",
+                "op": "contains",
+                "value": "blackmail_journal"
+              }
+            ]
+          },
+          "effects": [
+            {
+              "op": "set",
+              "target": "world.accusation_made",
+              "value": true
+            },
+            {
+              "op": "set",
+              "target": "world.accused",
+              "value": "morse"
+            },
+            {
+              "op": "record",
+              "text": "You lay out the evidence: the ledger, the journal, the vial. Morse killed Lord Ashby.",
+              "tags": [
+                "accuse",
+                "morse",
+                "ending"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "accuse_isabelle",
+          "from": "exploring",
+          "to": "wrong_accusation",
+          "description": "Accuse Lady Isabelle — the estranged wife.",
+          "guard": {
+            "target": "entity.detective.clues",
+            "op": "contains",
+            "value": "isabelle_vial_portrait"
+          },
+          "effects": [
+            {
+              "op": "set",
+              "target": "world.accusation_made",
+              "value": true
+            },
+            {
+              "op": "set",
+              "target": "world.accused",
+              "value": "isabelle"
+            },
+            {
+              "op": "record",
+              "text": "You accuse Lady Isabelle — the portrait seemed damning. But the vial was never prescribed to her. The constable finds no case.",
+              "tags": [
+                "accuse",
+                "isabelle",
+                "wrong",
+                "ending"
+              ]
+            }
           ]
         }
       ]
     }
   },
-
   "entities": {
     "foyer": {
-      "type":        "location",
-      "attrs":       {"name": "The Foyer", "visited": true},
+      "type": "location",
+      "attrs": {
+        "name": "The Foyer",
+        "visited": true
+      },
       "description": "The manor's entrance: black-and-white marble tiles, a guest ledger on the hall-stand, two gas lamps casting amber pools on the walls."
     },
     "hall": {
-      "type":        "location",
-      "attrs":       {"name": "The Great Hall"},
+      "type": "location",
+      "attrs": {
+        "name": "The Great Hall"
+      },
       "description": "A vaulted hall hung with moth-eaten tapestries. Four doors lead off into the manor's wings. A staircase descends to the cellar."
     },
     "library": {
-      "type":        "location",
-      "attrs":       {"name": "The Library"},
+      "type": "location",
+      "attrs": {
+        "name": "The Library"
+      },
       "description": "Floor-to-ceiling shelves. A mahogany desk, ransacked. The cabinet beside it stands open, its lock freshly broken."
     },
     "gallery": {
-      "type":        "location",
-      "attrs":       {"name": "The Portrait Gallery"},
+      "type": "location",
+      "attrs": {
+        "name": "The Portrait Gallery"
+      },
       "description": "Long and narrow, lit by a skylight. Portraits of the Ashby line stare down — all except one, draped with a dustsheet."
     },
     "kitchen": {
-      "type":        "location",
-      "attrs":       {"name": "The Kitchen"},
+      "type": "location",
+      "attrs": {
+        "name": "The Kitchen"
+      },
       "description": "Cold hearths and overturned pots. The cook has fled. A door leads down to the cellar."
     },
     "cellar": {
-      "type":        "location",
-      "attrs":       {"name": "The Wine Cellar"},
+      "type": "location",
+      "attrs": {
+        "name": "The Wine Cellar"
+      },
       "description": "Stone-walled, damp. Racks of bottles in the darkness. Something has been moved recently — disturbed dust on the floor."
     },
     "detective": {
-      "type":  "detective",
-      "attrs": {"name": "Inspector Graves", "location": "foyer", "insight": 0}
+      "type": "detective",
+      "attrs": {
+        "name": "Inspector Graves",
+        "location": "foyer",
+        "insight": 0
+      }
     },
     "morse": {
-      "type":  "suspect",
-      "attrs": {"name": "Morse the Butler", "location": "hall", "alibi": false}
+      "type": "suspect",
+      "attrs": {
+        "name": "Morse the Butler",
+        "location": "hall",
+        "alibi": false
+      }
     },
     "isabelle": {
-      "type":  "suspect",
-      "attrs": {"name": "Lady Isabelle Ashby", "location": "gallery", "alibi": false}
+      "type": "suspect",
+      "attrs": {
+        "name": "Lady Isabelle Ashby",
+        "location": "gallery",
+        "alibi": false
+      }
     }
   },
-
   "relationships": [
-    {"type": "exit", "from": "foyer",   "to": "hall",    "attrs": {"direction": "north"}},
-    {"type": "exit", "from": "hall",    "to": "foyer",   "attrs": {"direction": "south"}},
-    {"type": "exit", "from": "hall",    "to": "library", "attrs": {"direction": "east"}},
-    {"type": "exit", "from": "library", "to": "hall",    "attrs": {"direction": "west"}},
-    {"type": "exit", "from": "hall",    "to": "gallery", "attrs": {"direction": "west"}},
-    {"type": "exit", "from": "gallery", "to": "hall",    "attrs": {"direction": "east"}},
-    {"type": "exit", "from": "hall",    "to": "kitchen", "attrs": {"direction": "north"}},
-    {"type": "exit", "from": "kitchen", "to": "hall",    "attrs": {"direction": "south"}},
-    {"type": "exit", "from": "kitchen", "to": "cellar",  "attrs": {"direction": "down", "locked": true}},
-    {"type": "exit", "from": "cellar",  "to": "kitchen", "attrs": {"direction": "up"}}
+    {
+      "type": "exit",
+      "from": "foyer",
+      "to": "hall",
+      "attrs": {
+        "direction": "north"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "hall",
+      "to": "foyer",
+      "attrs": {
+        "direction": "south"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "hall",
+      "to": "library",
+      "attrs": {
+        "direction": "east"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "library",
+      "to": "hall",
+      "attrs": {
+        "direction": "west"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "hall",
+      "to": "gallery",
+      "attrs": {
+        "direction": "west"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "gallery",
+      "to": "hall",
+      "attrs": {
+        "direction": "east"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "hall",
+      "to": "kitchen",
+      "attrs": {
+        "direction": "north"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "kitchen",
+      "to": "hall",
+      "attrs": {
+        "direction": "south"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "kitchen",
+      "to": "cellar",
+      "attrs": {
+        "direction": "down",
+        "locked": true
+      }
+    },
+    {
+      "type": "exit",
+      "from": "cellar",
+      "to": "kitchen",
+      "attrs": {
+        "direction": "up"
+      }
+    }
   ],
-
   "triggers": {
     "scene_reckoning": {
-      "when":   {"target": "machine.arc.state", "op": "eq", "value": "solved"},
-      "once":   true,
+      "when": {
+        "target": "machine.arc.state",
+        "op": "eq",
+        "value": "solved"
+      },
+      "once": true,
       "intent": "scene: The Reckoning",
       "effects": [
-        {"op": "set",    "target": "entity.detective.location", "value": "foyer"},
-        {"op": "set",    "target": "entity.morse.location",     "value": "foyer"},
-        {"op": "set",    "target": "entity.isabelle.location",  "value": "foyer"},
-        {"op": "record", "text": "Inspector Graves gathers the household in the foyer and names the killer."}
+        {
+          "op": "set",
+          "target": "entity.detective.location",
+          "value": "foyer"
+        },
+        {
+          "op": "set",
+          "target": "entity.morse.location",
+          "value": "foyer"
+        },
+        {
+          "op": "set",
+          "target": "entity.isabelle.location",
+          "value": "foyer"
+        },
+        {
+          "op": "record",
+          "text": "Inspector Graves gathers the household in the foyer and names the killer."
+        }
       ]
     }
   },
-
   "_editor": {
     "map": {
-      "placeType":  "location",
-      "exitType":   "exit",
-      "moverAttr":  "location",
-      "cell":       28,
+      "placeType": "location",
+      "exitType": "exit",
+      "moverAttr": "location",
+      "cell": 28,
       "rooms": {
-        "kitchen": {"x": 9,  "y": 1,  "w": 4, "h": 3},
-        "cellar":  {"x": 15, "y": 1,  "w": 4, "h": 3},
-        "gallery": {"x": 3,  "y": 6,  "w": 4, "h": 3},
-        "hall":    {"x": 9,  "y": 6,  "w": 4, "h": 3},
-        "library": {"x": 15, "y": 6,  "w": 4, "h": 3},
-        "foyer":   {"x": 9,  "y": 11, "w": 4, "h": 3}
+        "kitchen": {
+          "x": -2,
+          "y": -7,
+          "w": 4,
+          "h": 3
+        },
+        "cellar": {
+          "x": 4,
+          "y": -7,
+          "w": 4,
+          "h": 3
+        },
+        "gallery": {
+          "x": -8,
+          "y": -2,
+          "w": 4,
+          "h": 3
+        },
+        "hall": {
+          "x": -2,
+          "y": -2,
+          "w": 4,
+          "h": 3
+        },
+        "library": {
+          "x": 4,
+          "y": -2,
+          "w": 4,
+          "h": 3
+        },
+        "foyer": {
+          "x": -2,
+          "y": 3,
+          "w": 4,
+          "h": 3
+        }
       },
       "tokens": {
-        "detective": {"x": 1, "y": 1},
-        "morse":     {"x": 1, "y": 1},
-        "isabelle":  {"x": 1, "y": 1}
+        "detective": {
+          "x": 1,
+          "y": 1
+        },
+        "morse": {
+          "x": 1,
+          "y": 1
+        },
+        "isabelle": {
+          "x": 1,
+          "y": 1
+        }
       }
     },
     "scenes": {
       "reckoning": {
-        "name":       "The Reckoning",
-        "machine":    "arc",
-        "state":      "solved",
-        "once":       true,
-        "placements": {"detective": "foyer", "morse": "foyer", "isabelle": "foyer"},
-        "record":     "Inspector Graves gathers the household in the foyer and names the killer."
+        "name": "The Reckoning",
+        "machine": "arc",
+        "state": "solved",
+        "once": true,
+        "placements": {
+          "detective": "foyer",
+          "morse": "foyer",
+          "isabelle": "foyer"
+        },
+        "record": "Inspector Graves gathers the household in the foyer and names the killer."
       }
     }
   }

@@ -51,7 +51,7 @@ const S = {
   meta: null, files: [], file: null, def: null,
   validation: [], dirty: false, section: 'game',
   subtab: { types: 'entityTypes', cast: 'entities', systems: 'triggers', map: 'layout' },
-  mapSel: null, mapTab: 'layout', mapZoom: 1,
+  mapSel: null, mapTab: 'layout', mapZoom: 1, mapScroll: null,
   pt: null, ptSeed: 42,
 };
 
@@ -1049,6 +1049,7 @@ function scaffoldMap() {
   if (!S.def.entityTypes.location) S.def.entityTypes.location = { description: 'A place in the world', attributes: { name: { type: 'string' } } };
   if (!S.def.relationshipTypes.exit) S.def.relationshipTypes.exit = { description: 'A passage between places', from: 'location', to: 'location', directed: true, attributes: { direction: { type: 'string' }, locked: { type: 'bool' } } };
   ed().map = { placeType: 'location', exitType: 'exit', moverAttr: 'location', rooms: {}, tokens: {}, cell: 28 };
+  S.mapScroll = null; // re-center the view on the fresh (origin-centered) map
   touched(); refresh();
 }
 
@@ -1063,13 +1064,19 @@ function mapSettings(m) {
 }
 
 // ensureRooms gives every place a grid rectangle {x,y,w,h} (in cells) if it lacks
-// one, packed into a loose grid. Rooms are shared across all scenes.
+// one, packed into a block CENTERED on the origin (0,0) so the map can grow in any
+// direction. Coordinates may be negative. Rooms are shared across all scenes.
 function ensureRooms(m) {
   const places = getPlaces(m);
-  const cols = Math.max(1, Math.ceil(Math.sqrt(places.length)));
+  if (!places.some(p => !m.rooms[p.id])) return;
+  const RW = 4, RH = 3, PITCHX = 6, PITCHY = 5;
+  const n = places.length;
+  const gcols = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const grows = Math.ceil(n / gcols);
+  const ox = -Math.round((gcols * PITCHX) / 2), oy = -Math.round((grows * PITCHY) / 2);
   let i = 0;
   for (const p of places) {
-    if (!m.rooms[p.id]) m.rooms[p.id] = { x: (i % cols) * 6 + 1, y: Math.floor(i / cols) * 5 + 1, w: 4, h: 3 };
+    if (!m.rooms[p.id]) m.rooms[p.id] = { x: ox + (i % gcols) * PITCHX, y: oy + Math.floor(i / gcols) * PITCHY, w: RW, h: RH };
     i++;
   }
 }
@@ -1160,17 +1167,33 @@ function setToken(ent, room, x, y, m, mode, sc) {
 function buildCanvas(m, mode, sc) {
   const cell = (m.cell || 28) * (S.mapZoom || 1);
   const places = getPlaces(m);
-  let maxX = 0, maxY = 0;
-  for (const p of places) { const r = m.rooms[p.id]; if (r) { maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h); } }
-  // Endless feel: always offer a large grid that grows past the furthest room.
-  const cols = Math.max(160, maxX + 50), rows = Math.max(110, maxY + 50);
-  const W = cols * cell, H = rows * cell;
+  // Origin-centered grid: (0,0) is the centre cell; coordinates may be negative,
+  // so the map can grow in every direction. We render a square [-E,+E] window
+  // that grows to keep margin around the furthest room.
+  let reach = 0, minX = 0, minY = 0, maxX = 0, maxY = 0, any = false;
+  for (const p of places) {
+    const r = m.rooms[p.id]; if (!r) continue; any = true;
+    minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
+    maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
+    reach = Math.max(reach, Math.abs(r.x), Math.abs(r.x + r.w), Math.abs(r.y), Math.abs(r.y + r.h));
+  }
+  const E = Math.max(70, Math.ceil(reach) + 30); // half-extent in cells
+  const span = 2 * E, W = span * cell, H = span * cell;
+  const PX = (g) => (g + E) * cell;              // grid cell -> pixel
+
   const box = h('div', { style: 'flex:1;min-width:0;align-self:stretch;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:grab' });
   const svg = s('svg', { width: W, height: H, style: 'display:block' });
+  svg.appendChild(s('defs', {}, s('marker', { id: 'exitarrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', fill: '#5a6180' }))));
 
+  // grid, with emphasised centre axes and a marked (0,0) cell
   const grid = s('g', {});
-  for (let x = 0; x <= cols; x++) grid.appendChild(s('line', { x1: x * cell, y1: 0, x2: x * cell, y2: H, stroke: '#1d212b', 'stroke-width': 1 }));
-  for (let y = 0; y <= rows; y++) grid.appendChild(s('line', { x1: 0, y1: y * cell, x2: W, y2: y * cell, stroke: '#1d212b', 'stroke-width': 1 }));
+  for (let i = 0; i <= span; i++) {
+    const onAxis = i === E, c = onAxis ? '#33405e' : '#1d212b', sw = onAxis ? 2 : 1;
+    grid.appendChild(s('line', { x1: i * cell, y1: 0, x2: i * cell, y2: H, stroke: c, 'stroke-width': sw }));
+    grid.appendChild(s('line', { x1: 0, y1: i * cell, x2: W, y2: i * cell, stroke: c, 'stroke-width': sw }));
+  }
+  grid.appendChild(s('rect', { x: PX(0), y: PX(0), width: cell, height: cell, fill: 'rgba(124,156,255,0.10)' }));
+  grid.appendChild(s('text', { x: PX(0) + 3, y: PX(0) + 11, fill: '#5a6180', 'font-size': 9, style: 'pointer-events:none' }, '0,0'));
   svg.appendChild(grid);
 
   // transparent background: drag to pan, click to deselect
@@ -1184,7 +1207,7 @@ function buildCanvas(m, mode, sc) {
   });
   svg.appendChild(bg);
 
-  // scroll wheel zooms toward the cursor
+  // scroll wheel zooms toward the cursor (raw pixel-cell space)
   box.addEventListener('wheel', (e) => {
     e.preventDefault();
     const rect = box.getBoundingClientRect();
@@ -1196,16 +1219,21 @@ function buildCanvas(m, mode, sc) {
     renderMain();
   }, { passive: false });
 
+  // exits: each direction offset to its own side, label near its source, so a
+  // bidirectional pair never overlaps.
   const edgeG = s('g', {}); svg.appendChild(edgeG);
   const drawEdges = () => {
     edgeG.innerHTML = '';
     for (const r of getExits(m)) {
       const a = m.rooms[r.from], b = m.rooms[r.to]; if (!a || !b) continue;
-      const ax = (a.x + a.w / 2) * cell, ay = (a.y + a.h / 2) * cell, bx = (b.x + b.w / 2) * cell, by = (b.y + b.h / 2) * cell;
+      const ax = PX(a.x + a.w / 2), ay = PX(a.y + a.h / 2), bx = PX(b.x + b.w / 2), by = PX(b.y + b.h / 2);
+      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+      const off = (r.from < r.to ? 1 : -1) * 5;
+      const x1 = ax + nx * off, y1 = ay + ny * off, x2 = bx + nx * off, y2 = by + ny * off;
       const locked = r.attrs && r.attrs.locked;
-      edgeG.appendChild(s('line', { x1: ax, y1: ay, x2: bx, y2: by, stroke: locked ? '#e2615a' : '#5a6180', 'stroke-width': 2, 'stroke-dasharray': locked ? '6 4' : '' }));
+      edgeG.appendChild(s('line', { x1, y1, x2, y2, stroke: locked ? '#e2615a' : '#5a6180', 'stroke-width': 2, 'stroke-dasharray': locked ? '6 4' : '', 'marker-end': 'url(#exitarrow)' }));
       const dir = (r.attrs && r.attrs.direction) || '';
-      if (dir) edgeG.appendChild(s('text', { x: (ax + bx) / 2, y: (ay + by) / 2 - 4, 'text-anchor': 'middle', fill: '#9aa3b2', 'font-size': 10 }, dir));
+      if (dir) { const t = 0.3, lx = x1 + (x2 - x1) * t, ly = y1 + (y2 - y1) * t; edgeG.appendChild(s('text', { x: lx + nx * 8, y: ly + ny * 8 + 3, 'text-anchor': 'middle', fill: '#9aa3b2', 'font-size': 10 }, dir)); }
     }
   };
   drawEdges();
@@ -1217,7 +1245,7 @@ function buildCanvas(m, mode, sc) {
   for (const p of places) {
     const r = m.rooms[p.id]; if (!r) continue;
     const seld = mode === 'layout' && S.mapSel === p.id;
-    const g = s('g', { transform: `translate(${r.x * cell},${r.y * cell})` });
+    const g = s('g', { transform: `translate(${PX(r.x)},${PX(r.y)})` });
     const rect = s('rect', { x: 0, y: 0, width: r.w * cell, height: r.h * cell, rx: 6, fill: seld ? '#222b44' : '#171a22', stroke: seld ? '#7c9cff' : '#2e3342', 'stroke-width': seld ? 2 : 1, style: mode === 'layout' ? 'cursor:move' : 'cursor:pointer' });
     g.appendChild(rect);
     g.appendChild(s('text', { x: 7, y: 16, fill: '#e6e8ee', 'font-size': 12, 'font-weight': 600, style: 'pointer-events:none' }, placeName(p)));
@@ -1241,8 +1269,8 @@ function buildCanvas(m, mode, sc) {
         const sx = ev.clientX, sy = ev.clientY, ox = r.x, oy = r.y; let moved = false;
         const mm = (e2) => {
           if (Math.abs(e2.clientX - sx) + Math.abs(e2.clientY - sy) > 3) moved = true;
-          r.x = Math.max(0, ox + Math.round((e2.clientX - sx) / cell)); r.y = Math.max(0, oy + Math.round((e2.clientY - sy) / cell));
-          g.setAttribute('transform', `translate(${r.x * cell},${r.y * cell})`); drawEdges();
+          r.x = ox + Math.round((e2.clientX - sx) / cell); r.y = oy + Math.round((e2.clientY - sy) / cell); // negatives allowed
+          g.setAttribute('transform', `translate(${PX(r.x)},${PX(r.y)})`); drawEdges();
         };
         const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (moved) { touched(); renderMain(); } else { S.mapSel = p.id; renderMain(); } };
         document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
@@ -1251,9 +1279,13 @@ function buildCanvas(m, mode, sc) {
     svg.appendChild(g);
   }
   box.appendChild(svg);
-  // keep the point under the cursor stable across a wheel-zoom re-render
+
+  box.addEventListener('scroll', () => { S.mapScroll = { left: box.scrollLeft, top: box.scrollTop }; });
   requestAnimationFrame(() => {
     if (S.mapAnchor) { box.scrollLeft = S.mapAnchor.cellX * cell - S.mapAnchor.offX; box.scrollTop = S.mapAnchor.cellY * cell - S.mapAnchor.offY; S.mapAnchor = null; }
+    else if (S.mapScroll) { box.scrollLeft = S.mapScroll.left; box.scrollTop = S.mapScroll.top; }
+    else { const cgx = any ? (minX + maxX) / 2 : 0, cgy = any ? (minY + maxY) / 2 : 0; box.scrollLeft = PX(cgx) - box.clientWidth / 2; box.scrollTop = PX(cgy) - box.clientHeight / 2; }
+    S.mapScroll = { left: box.scrollLeft, top: box.scrollTop };
   });
   return box;
 }
@@ -1290,10 +1322,17 @@ function drawToken(t, m, mode, sc, cell) {
 function addPlace(m) {
   const et = S.def.entityTypes[m.placeType];
   const hasName = et && et.attributes && et.attributes.name;
-  const name = 'New place';
   S.def.entities = S.def.entities || {};
-  const id = uniqueId(slugify(name), x => x in S.def.entities);
-  S.def.entities[id] = { type: m.placeType, attrs: hasName ? { name } : {} };
+  const id = uniqueId(slugify('New place'), x => x in S.def.entities);
+  S.def.entities[id] = { type: m.placeType, attrs: hasName ? { name: 'New place' } : {} };
+  // place near the origin, just below the existing cluster (coords may be negative)
+  const rs = Object.values(m.rooms || {});
+  let nx = -2, ny = -1;
+  if (rs.length) {
+    const lo = Math.min(...rs.map(r => r.x)), hi = Math.max(...rs.map(r => r.x + r.w)), bot = Math.max(...rs.map(r => r.y + r.h));
+    nx = Math.round((lo + hi) / 2 - 2); ny = bot + 2;
+  }
+  m.rooms[id] = { x: nx, y: ny, w: 4, h: 3 };
   S.mapSel = id;
   touched(); refresh();
 }
@@ -1635,6 +1674,7 @@ async function openFile(file) {
   if (S.dirty && !confirm('Discard unsaved changes?')) { $('#file-select').value = S.file || ''; return; }
   const r = await api('GET', '/api/games/' + encodeURIComponent(file));
   S.file = file; S.def = JSON.parse(JSON.stringify(r.definition)); S.validation = r.validation || []; S.dirty = false;
+  S.mapSel = null; S.mapTab = 'layout'; S.mapScroll = null; // fresh map view per game
   $('#btn-save').disabled = true;
   refresh();
 }

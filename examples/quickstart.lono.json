@@ -4,75 +4,118 @@
   "version": 1,
   "description": "A tiny self-contained escape from Ashford Manor. One tense night, one guard, one chance. Exercises every engine system in the smallest possible space.",
   "intent": "a teaching example — each top-level section demonstrates one system",
-
   "world": {
-    "alarm":   {"type": "bool", "default": false,  "description": "True once the house alarm sounds"},
-    "clue_count": {"type": "int",  "default": 0, "min": 0, "description": "Derived mirror of len.entity.player.clues — kept as world int for guard convenience"}
+    "alarm": {
+      "type": "bool",
+      "default": false,
+      "description": "True once the house alarm sounds"
+    },
+    "clue_count": {
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "description": "Derived mirror of len.entity.player.clues — kept as world int for guard convenience"
+    }
   },
-
   "entityTypes": {
     "location": {
       "description": "A place in the manor",
       "attributes": {
-        "name": {"type": "string"}
+        "name": {
+          "type": "string"
+        }
       }
     },
     "character": {
       "description": "A person who can move and carry items",
       "attributes": {
-        "name":     {"type": "string"},
-        "location": {"type": "ref",  "refType": "location"},
-        "clues":    {"type": "set",  "elem": "string", "description": "Evidence collected"},
-        "stealth":  {"type": "int",  "default": 5, "min": 0, "max": 20, "description": "Skill used in the escape roll"}
+        "name": {
+          "type": "string"
+        },
+        "location": {
+          "type": "ref",
+          "refType": "location"
+        },
+        "clues": {
+          "type": "set",
+          "elem": "string",
+          "description": "Evidence collected"
+        },
+        "stealth": {
+          "type": "int",
+          "default": 5,
+          "min": 0,
+          "max": 20,
+          "description": "Skill used in the escape roll"
+        }
       },
       "slots": {
-        "hand": {"accepts": ["torch"]}
+        "hand": {
+          "accepts": [
+            "torch"
+          ]
+        }
       }
     }
   },
-
   "itemTypes": {
     "lantern": {
-      "category":   "torch",
+      "category": "torch",
       "equippable": true,
-      "attributes": {"brightness": 3}
+      "attributes": {
+        "brightness": 3
+      }
     }
   },
-
   "relationshipTypes": {
     "trust": {
       "description": "How much one character trusts another",
       "from": "character",
-      "to":   "character",
+      "to": "character",
       "directed": true,
       "attributes": {
-        "level": {"type": "int", "default": 0, "min": -10, "max": 10}
+        "level": {
+          "type": "int",
+          "default": 0,
+          "min": -10,
+          "max": 10
+        }
       }
     },
     "exit": {
       "description": "A traversable passage between locations",
       "from": "location",
-      "to":   "location",
+      "to": "location",
       "directed": true,
       "attributes": {
-        "direction": {"type": "string"}
+        "direction": {
+          "type": "string"
+        }
       }
     }
   },
-
   "derived": {
     "exits_here": {
-      "over":   "relationships",
-      "where":  {"type": "exit", "from": {"$path": "entity.player.location"}},
+      "over": "relationships",
+      "where": {
+        "type": "exit",
+        "from": {
+          "$path": "entity.player.location"
+        }
+      },
       "reduce": "list",
       "intent": "destination ids reachable from the player's current location"
     }
   },
-
   "machines": {
     "arc": {
       "initial": "study",
-      "states":  ["study", "hall", "escaped", "caught"],
+      "states": [
+        "study",
+        "hall",
+        "escaped",
+        "caught"
+      ],
       "stateMeta": {
         "study": {
           "description": "You stand in the dim study, lantern in hand. The manor sleeps — for now."
@@ -81,205 +124,408 @@
           "description": "The great hall stretches before you. The guard paces the far end."
         },
         "escaped": {
-          "terminal":    true,
-          "ending":      true,
+          "terminal": true,
+          "ending": true,
           "description": "You slip through the garden gate and vanish into the night. The locket is safe.",
-          "intent":      "reached when the player sneaks past the guard and moves to the garden"
+          "intent": "reached when the player sneaks past the guard and moves to the garden"
         },
         "caught": {
-          "terminal":    true,
-          "ending":      true,
+          "terminal": true,
+          "ending": true,
           "description": "Boots thunder on stone. A lantern swings into your face. 'Don't move.'",
-          "intent":      "reached when the alarm fires and the schedule expires"
+          "intent": "reached when the alarm fires and the schedule expires"
         }
       },
       "transitions": [
         {
-          "id":   "enter_hall",
+          "id": "enter_hall",
           "from": "study",
-          "to":   "hall",
+          "to": "hall",
           "description": "Creep from the study into the great hall.",
-          "guard": {"target": "equipped.player.hand", "op": "ne", "value": ""},
+          "guard": {
+            "target": "equipped.player.hand",
+            "op": "ne",
+            "value": ""
+          },
           "effects": [
-            {"op": "move",   "entity": "player", "to": "hall",   "attr": "location", "via": "exit"},
-            {"op": "record", "text": "You slip into the great hall, lantern dimmed to a flicker.", "tags": ["movement"]}
+            {
+              "op": "move",
+              "entity": "player",
+              "to": "hall",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "record",
+              "text": "You slip into the great hall, lantern dimmed to a flicker.",
+              "tags": [
+                "movement"
+              ]
+            }
           ]
         },
         {
-          "id":          "sneak_past",
-          "from":        "hall",
-          "to":          "hall",
+          "id": "sneak_past",
+          "from": "hall",
+          "to": "hall",
           "description": "Try to sneak past the guard — a stealth roll vs. DC 8.",
-          "guard": {"target": "cooldown.sneak", "op": "eq", "value": 0},
+          "guard": {
+            "target": "cooldown.sneak",
+            "op": "eq",
+            "value": 0
+          },
           "effects": [
-            {"op": "cooldown", "key": "sneak", "ticks": 1},
-            {"op": "roll",     "dice": "1d20",  "store": "snk"},
-            {"op": "compute",
-             "target": "entity.player.stealth",
-             "fn":     "add",
-             "a":      {"$path": "entity.player.stealth"},
-             "b":      0},
-            {"op": "if",
-             "when": {"target": "roll.snk", "op": "gte", "value": 8},
-             "then": [
-               {"op": "add_to",    "target": "entity.player.clues", "value": "guard_schedule"},
-               {"op": "discover",  "lore": "locket_origin"},
-               {"op": "mark_beat", "beat": "sneak_success"},
-               {"op": "record",    "text": "You slip past the guard unnoticed and pocket his duty roster.", "tags": ["stealth","clue"]}
-             ],
-             "else": [
-               {"op": "set",    "target": "world.alarm", "value": true},
-               {"op": "record", "text": "Your foot catches a loose flagstone — the alarm bell rings!", "tags": ["alarm","fail"]}
-             ]}
+            {
+              "op": "cooldown",
+              "key": "sneak",
+              "ticks": 1
+            },
+            {
+              "op": "roll",
+              "dice": "1d20",
+              "store": "snk"
+            },
+            {
+              "op": "compute",
+              "target": "entity.player.stealth",
+              "fn": "add",
+              "a": {
+                "$path": "entity.player.stealth"
+              },
+              "b": 0
+            },
+            {
+              "op": "if",
+              "when": {
+                "target": "roll.snk",
+                "op": "gte",
+                "value": 8
+              },
+              "then": [
+                {
+                  "op": "add_to",
+                  "target": "entity.player.clues",
+                  "value": "guard_schedule"
+                },
+                {
+                  "op": "discover",
+                  "lore": "locket_origin"
+                },
+                {
+                  "op": "mark_beat",
+                  "beat": "sneak_success"
+                },
+                {
+                  "op": "record",
+                  "text": "You slip past the guard unnoticed and pocket his duty roster.",
+                  "tags": [
+                    "stealth",
+                    "clue"
+                  ]
+                }
+              ],
+              "else": [
+                {
+                  "op": "set",
+                  "target": "world.alarm",
+                  "value": true
+                },
+                {
+                  "op": "record",
+                  "text": "Your foot catches a loose flagstone — the alarm bell rings!",
+                  "tags": [
+                    "alarm",
+                    "fail"
+                  ]
+                }
+              ]
+            }
           ]
         },
         {
-          "id":          "flee_to_garden",
-          "from":        "hall",
-          "to":          "escaped",
+          "id": "flee_to_garden",
+          "from": "hall",
+          "to": "escaped",
           "description": "Run for the garden gate.",
           "guard": {
             "and": [
-              {"target": "entity.player.clues", "op": "contains", "value": "guard_schedule"},
-              {"target": "world.alarm",         "op": "eq",       "value": false},
-              {"target": "clock",               "op": "lt",       "value": 100,
-               "description": "must escape before dawn (clock < 100 ticks)"}
+              {
+                "target": "entity.player.clues",
+                "op": "contains",
+                "value": "guard_schedule"
+              },
+              {
+                "target": "world.alarm",
+                "op": "eq",
+                "value": false
+              },
+              {
+                "target": "clock",
+                "op": "lt",
+                "value": 100,
+                "description": "must escape before dawn (clock < 100 ticks)"
+              }
             ]
           },
           "effects": [
-            {"op": "move",   "entity": "player", "to": "garden", "attr": "location", "via": "exit"},
-            {"op": "record", "text": "You sprint across the lawn and squeeze through the iron gate. Freedom.", "tags": ["escape"]}
+            {
+              "op": "move",
+              "entity": "player",
+              "to": "garden",
+              "attr": "location",
+              "via": "exit"
+            },
+            {
+              "op": "record",
+              "text": "You sprint across the lawn and squeeze through the iron gate. Freedom.",
+              "tags": [
+                "escape"
+              ]
+            }
           ]
         }
       ]
     },
-
     "guard_mood": {
       "description": "Attached mood machine — each guard entity carries its own state",
-      "attach": {"to": "entityType:character"},
+      "attach": {
+        "to": "entityType:character"
+      },
       "initial": "calm",
-      "states":  ["calm", "alert", "hostile"],
+      "states": [
+        "calm",
+        "alert",
+        "hostile"
+      ],
       "transitions": [
         {
-          "id":   "become_alert",
+          "id": "become_alert",
           "from": "calm",
-          "to":   "alert",
-          "guard": {"target": "world.alarm", "op": "eq", "value": true},
+          "to": "alert",
+          "guard": {
+            "target": "world.alarm",
+            "op": "eq",
+            "value": true
+          },
           "effects": [
-            {"op": "record", "text": "The guard snaps to attention.", "tags": ["guard"]}
+            {
+              "op": "record",
+              "text": "The guard snaps to attention.",
+              "tags": [
+                "guard"
+              ]
+            }
           ]
         },
         {
-          "id":   "become_hostile",
+          "id": "become_hostile",
           "from": "alert",
-          "to":   "hostile",
+          "to": "hostile",
           "effects": [
-            {"op": "record", "text": "The guard draws his truncheon.", "tags": ["guard"]}
+            {
+              "op": "record",
+              "text": "The guard draws his truncheon.",
+              "tags": [
+                "guard"
+              ]
+            }
           ]
         }
       ]
     }
   },
-
   "beats": {
     "sneak_success": {
-      "text":         "The guard pauses, then turns away. Your heart hammers in your chest.",
-      "machineState": {"machine": "arc", "state": "hall"},
-      "once":         true,
-      "intent":       "delivered immediately after a successful sneak roll"
+      "text": "The guard pauses, then turns away. Your heart hammers in your chest.",
+      "machineState": {
+        "machine": "arc",
+        "state": "hall"
+      },
+      "once": true,
+      "intent": "delivered immediately after a successful sneak roll"
     },
     "hall_tense": {
-      "text":         "The guard's boots echo off the stone. Every shadow feels alive.",
-      "machineState": {"machine": "arc", "state": "hall"},
-      "guard":        {"target": "world.alarm", "op": "eq", "value": false},
-      "once":         false,
-      "intent":       "ambient beat: repeatable while alarm is quiet"
+      "text": "The guard's boots echo off the stone. Every shadow feels alive.",
+      "machineState": {
+        "machine": "arc",
+        "state": "hall"
+      },
+      "guard": {
+        "target": "world.alarm",
+        "op": "eq",
+        "value": false
+      },
+      "once": false,
+      "intent": "ambient beat: repeatable while alarm is quiet"
     }
   },
-
   "triggers": {
     "on_alarm": {
-      "when":   {"target": "world.alarm", "op": "eq", "value": true},
-      "once":   true,
+      "when": {
+        "target": "world.alarm",
+        "op": "eq",
+        "value": true
+      },
+      "once": true,
       "effects": [
-        {"op": "schedule", "in": 2, "do": [
-          {"op": "set_machine_state", "machine": "arc", "state": "caught"}
-        ]},
-        {"op": "record", "text": "The alarm bell tolls — you have two turns to escape.", "tags": ["alarm"]}
+        {
+          "op": "schedule",
+          "in": 2,
+          "do": [
+            {
+              "op": "set_machine_state",
+              "machine": "arc",
+              "state": "caught"
+            }
+          ]
+        },
+        {
+          "op": "record",
+          "text": "The alarm bell tolls — you have two turns to escape.",
+          "tags": [
+            "alarm"
+          ]
+        }
       ],
       "intent": "alarm starts a 2-tick countdown to the caught ending"
     },
     "clock_tick": {
-      "every":  1,
-      "once":   false,
+      "every": 1,
+      "once": false,
       "effects": [
-        {"op": "record", "text": "A minute slips by.", "tags": ["clock"]}
+        {
+          "op": "record",
+          "text": "A minute slips by.",
+          "tags": [
+            "clock"
+          ]
+        }
       ],
       "intent": "periodic trigger — fires every advance tick, demonstrating the clock path"
     }
   },
-
   "lore": {
     "locket_origin": {
-      "title":   "The Silver Locket",
-      "text":    "Cast in Year 312 for Lady Eleanor Ashford. Hidden in the study after the family's fall; said to open a safe-box in the garden wall.",
-      "tags":    ["locket", "manor", "history"],
+      "title": "The Silver Locket",
+      "text": "Cast in Year 312 for Lady Eleanor Ashford. Hidden in the study after the family's fall; said to open a safe-box in the garden wall.",
+      "tags": [
+        "locket",
+        "manor",
+        "history"
+      ],
       "subject": "player",
-      "when":    "Year 312",
-      "intent":  "backstory revealed when the player successfully sneaks past the guard"
+      "when": "Year 312",
+      "intent": "backstory revealed when the player successfully sneaks past the guard"
     }
   },
-
   "entities": {
     "study": {
-      "type":        "location",
-      "attrs":       {"name": "The Study"},
+      "type": "location",
+      "attrs": {
+        "name": "The Study"
+      },
       "description": "Tall bookshelves and a cold hearth. Moonlight cuts through the shutters."
     },
     "hall": {
-      "type":        "location",
-      "attrs":       {"name": "The Great Hall"},
+      "type": "location",
+      "attrs": {
+        "name": "The Great Hall"
+      },
       "description": "A vaulted ceiling hung with moth-eaten tapestries. A guard patrols the far end."
     },
     "garden": {
-      "type":        "location",
-      "attrs":       {"name": "The Walled Garden"},
+      "type": "location",
+      "attrs": {
+        "name": "The Walled Garden"
+      },
       "description": "Overgrown rose-beds and a rusted iron gate. Freedom lies beyond."
     },
     "player": {
-      "type":        "character",
-      "attrs":       {"name": "You", "location": "study", "stealth": 5},
-      "inventory":   {"lantern": 1},
-      "equipped":    {"hand": "lantern"},
+      "type": "character",
+      "attrs": {
+        "name": "You",
+        "location": "study",
+        "stealth": 5
+      },
+      "inventory": {
+        "lantern": 1
+      },
+      "equipped": {
+        "hand": "lantern"
+      },
       "description": "A thief with one job: retrieve the locket and disappear."
     },
     "guard": {
-      "type":        "character",
-      "attrs":       {"name": "Thomas", "location": "hall", "stealth": 3},
+      "type": "character",
+      "attrs": {
+        "name": "Thomas",
+        "location": "hall",
+        "stealth": 3
+      },
       "description": "Thomas, a dutiful night-watchman who hasn't missed a round in twenty years."
     }
   },
-
   "relationships": [
-    {"type": "trust", "from": "player", "to": "guard", "attrs": {"level": 0}},
-    {"type": "exit",  "from": "study",  "to": "hall",   "attrs": {"direction": "north"}},
-    {"type": "exit",  "from": "hall",   "to": "garden", "attrs": {"direction": "east"}}
+    {
+      "type": "trust",
+      "from": "player",
+      "to": "guard",
+      "attrs": {
+        "level": 0
+      }
+    },
+    {
+      "type": "exit",
+      "from": "study",
+      "to": "hall",
+      "attrs": {
+        "direction": "north"
+      }
+    },
+    {
+      "type": "exit",
+      "from": "hall",
+      "to": "garden",
+      "attrs": {
+        "direction": "east"
+      }
+    }
   ],
-
   "_editor": {
     "map": {
       "placeType": "location",
-      "exitType":  "exit",
+      "exitType": "exit",
       "moverAttr": "location",
-      "cell":      28,
+      "cell": 28,
       "rooms": {
-        "study":  {"x": 5,  "y": 9, "w": 4, "h": 3},
-        "hall":   {"x": 5,  "y": 4, "w": 4, "h": 3},
-        "garden": {"x": 11, "y": 4, "w": 4, "h": 3}
+        "study": {
+          "x": -5,
+          "y": 1,
+          "w": 4,
+          "h": 3
+        },
+        "hall": {
+          "x": -5,
+          "y": -4,
+          "w": 4,
+          "h": 3
+        },
+        "garden": {
+          "x": 1,
+          "y": -4,
+          "w": 4,
+          "h": 3
+        }
       },
       "tokens": {
-        "player": {"x": 1, "y": 1},
-        "guard":  {"x": 1, "y": 1}
+        "player": {
+          "x": 1,
+          "y": 1
+        },
+        "guard": {
+          "x": 1,
+          "y": 1
+        }
       }
     }
   }
