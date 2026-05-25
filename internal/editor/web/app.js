@@ -171,6 +171,23 @@ function stringList(arr, { ph = 'value', onStructure } = {}) {
   return wrap;
 }
 
+// list of arbitrary JSON values (literals or {"$path":"…"}), e.g. check modifiers
+function valueList(arr) {
+  const wrap = h('div', {});
+  const redraw = () => {
+    wrap.innerHTML = '';
+    arr.forEach((_, i) => {
+      const inp = h('input', { type: 'text', value: valToInput(arr[i]), placeholder: 'number or {"$path":"entity.x.skill"}' });
+      inp.addEventListener('input', () => { const v = inputToVal(inp.value); arr[i] = v === undefined ? 0 : v; touched(); });
+      wrap.appendChild(h('div', { class: 'list-row' }, inp,
+        h('button', { class: 'tiny del', onclick: () => { arr.splice(i, 1); redraw(); touched(); } }, '✕')));
+    });
+    wrap.appendChild(h('button', { class: 'tiny add-btn', onclick: () => { arr.push(0); redraw(); touched(); } }, '+ add modifier'));
+  };
+  redraw();
+  return wrap;
+}
+
 // key/value map editor. valueKind: 'value' | 'int' | 'string-item' (item dropdown) | 'string'
 function kvEditor(obj, { valueKind = 'value', keyPh = 'key', options = null } = {}) {
   const wrap = h('div', {});
@@ -427,6 +444,7 @@ function effectField(eff, f) {
       return field(f.name, textInput(eff, f.name), f.doc);
     }
     case 'value': return field(f.name, valueInput(eff, f.name), f.doc);
+    case 'values': { eff[f.name] = eff[f.name] || []; return field(f.name, valueList(eff[f.name]), f.doc); }
     case 'tags': { eff[f.name] = eff[f.name] || []; return field(f.name, stringList(eff[f.name], { ph: 'tag' }), f.doc); }
     case 'attrs': { eff[f.name] = eff[f.name] || {}; return field(f.name, kvEditor(eff[f.name], { valueKind: 'value' }), f.doc); }
     case 'guard': {

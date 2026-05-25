@@ -115,6 +115,8 @@ var effectOpSpecs = []EffectOpSpec{
 	// --- dice ---
 	{Op: "roll", Group: "Dice", Doc: "Roll dice (e.g. 1d20) and store the result under roll.<store>.",
 		Fields: []FieldSpec{{"dice", "string", "e.g. 1d20, 2d6+1"}, {"store", "string", "key, read as roll.<store>"}}},
+	{Op: "check", Group: "Dice", Doc: "Skill check: roll dice + modifiers vs a DC. Branch on check.<store>.success / .margin / .total / .roll.",
+		Fields: []FieldSpec{{"dice", "string", "e.g. 1d20"}, {"mods", "values", "modifiers: numbers or {\"$path\":\"entity.x.skill\"}"}, {"dc", "value", "target number, or {\"$path\":\"…\"} for an opposed check"}, {"store", "string", "key, read as check.<store>.*"}}},
 
 	// --- control flow ---
 	{Op: "if", Group: "Control flow", Doc: "Run `then` effects if `when` holds, else `else`.",

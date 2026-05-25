@@ -242,6 +242,87 @@ func ValidateDefinition(def *Definition) []ValidationError {
 		}
 	}
 
+	// Movement lint (def-aware): every move destination must resolve to an entity
+	// known at runtime, and the attr it moves along must be a ref. Catches typo'd
+	// destinations and moves down a non-ref attribute at import, before play.
+	// "Known" = the authored cast plus anything create_entity introduces, so
+	// dynamically created destinations are not false-flagged.
+	known := map[string]bool{}
+	for id := range def.Entities {
+		known[id] = true
+	}
+	collectCreatedEntityIDs(def.Setup, known)
+	for _, m := range def.Machines {
+		for _, tr := range m.Transitions {
+			collectCreatedEntityIDs(tr.Effects, known)
+		}
+	}
+	for _, trig := range def.Triggers {
+		collectCreatedEntityIDs(trig.Effects, known)
+	}
+	errs = append(errs, validateMoveEffects(def, "setup", def.Setup, known)...)
+	for mName, m := range def.Machines {
+		for _, tr := range m.Transitions {
+			errs = append(errs, validateMoveEffects(def, fmt.Sprintf("machines.%s.%s.effects", mName, tr.ID), tr.Effects, known)...)
+		}
+	}
+	for tName, trig := range def.Triggers {
+		errs = append(errs, validateMoveEffects(def, "triggers."+tName+".effects", trig.Effects, known)...)
+	}
+
+	return errs
+}
+
+// collectCreatedEntityIDs records every entity id a create_entity op would
+// introduce, recursing into if/schedule branches.
+func collectCreatedEntityIDs(effs []Effect, into map[string]bool) {
+	for _, e := range effs {
+		switch e.Op {
+		case "create_entity":
+			if e.ID != "" {
+				into[e.ID] = true
+			}
+		case "if":
+			collectCreatedEntityIDs(e.Then, into)
+			collectCreatedEntityIDs(e.Else, into)
+		case "schedule":
+			collectCreatedEntityIDs(e.Do, into)
+		}
+	}
+}
+
+// validateMoveEffects checks each move op's destination is a known entity and
+// its move attribute is a ref on the mover's type. Recurses into if/schedule.
+func validateMoveEffects(def *Definition, path string, effs []Effect, known map[string]bool) []ValidationError {
+	var errs []ValidationError
+	for i, e := range effs {
+		p := fmt.Sprintf("%s[%d]", path, i)
+		switch e.Op {
+		case "move":
+			if e.To != "" && !known[e.To] {
+				errs = append(errs, ValidationError{p + ".to", fmt.Sprintf("move destination %q is not a defined entity", e.To)})
+			}
+			attr := e.Attr
+			if attr == "" {
+				attr = "location"
+			}
+			if ei, ok := def.Entities[e.Entity]; ok {
+				if et, ok := def.EntityTypes[ei.Type]; ok {
+					spec, ok := et.Attributes[attr]
+					if !ok {
+						errs = append(errs, ValidationError{p + ".attr", fmt.Sprintf("mover %q (type %q) has no attribute %q to move along", e.Entity, ei.Type, attr)})
+					} else if spec.Type != "ref" {
+						errs = append(errs, ValidationError{p + ".attr", fmt.Sprintf("move attribute %q on type %q is not a ref (got %q)", attr, ei.Type, spec.Type)})
+					}
+				}
+			}
+		case "if":
+			errs = append(errs, validateMoveEffects(def, p+".then", e.Then, known)...)
+			errs = append(errs, validateMoveEffects(def, p+".else", e.Else, known)...)
+		case "schedule":
+			errs = append(errs, validateMoveEffects(def, p+".do", e.Do, known)...)
+		}
+	}
 	return errs
 }
 
@@ -301,6 +382,16 @@ func validateEffect(path string, e Effect) []ValidationError {
 	case "discover":
 		if e.Lore == "" {
 			add(path+".lore", "discover requires lore id")
+		}
+	case "check":
+		if e.Dice == "" {
+			add(path+".dice", "check requires dice (e.g. \"1d20\")")
+		}
+		if e.Store == "" {
+			add(path+".store", "check requires a store key (read the result as check.<store>.*)")
+		}
+		if e.DC == nil {
+			add(path+".dc", "check requires a dc (a number, or {\"$path\":\"…\"} for an opposed check)")
 		}
 	}
 	return errs

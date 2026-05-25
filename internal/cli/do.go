@@ -60,6 +60,7 @@ func (a *app) newDoCmd() *cobra.Command {
 			}
 			data, err := stateData(def, ns, map[string]any{
 				"rolls":    res.Rolls,
+				"checks":   res.Checks,
 				"fired":    res.Fired,
 				"warnings": res.Warnings,
 			})

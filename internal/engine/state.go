@@ -69,6 +69,19 @@ type RollResult struct {
 	Result float64 `json:"result"`
 }
 
+// CheckResult is the outcome of a `check` effect: a dice roll plus modifiers
+// measured against a difficulty. Readable mid-action via check.<store>.<field>
+// and surfaced in the action result so the narrator can see what the dice said.
+type CheckResult struct {
+	Store   string  `json:"store,omitempty"`
+	Dice    string  `json:"dice,omitempty"`
+	Roll    float64 `json:"roll"`    // the raw die result (before modifiers)
+	Total   float64 `json:"total"`   // roll + sum of modifiers
+	DC      float64 `json:"dc"`      // difficulty the total was measured against
+	Margin  float64 `json:"margin"`  // total - dc (negative = failed, by how much)
+	Success bool    `json:"success"` // total >= dc
+}
+
 type HistoryEntry struct {
 	Seq     int            `json:"seq"`
 	TS      time.Time      `json:"ts"`

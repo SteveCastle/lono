@@ -346,8 +346,23 @@ as `roll.<store>`, a single action expresses a skill check:
     "else":[{"op":"mark_beat","beat":"you_miss"}]}]
 ```
 
-So damage formulas, scaled costs, and skill checks stay in the engine — the model
-doesn't do the math.
+**Attributes, skills & checks.** Attributes and skills are whatever the designer
+declares — just typed `int` attributes on an entity type (`strength`, `lockpicking`,
+`charm`, …); the engine prescribes none. The **`check`** op turns them into
+modifiers against a roll in one step and exposes a rich result:
+
+```json
+[{"op":"check","dice":"1d20","mods":[{"$path":"entity.player.lockpicking"}],"dc":15,"store":"pick"},
+ {"op":"if","when":{"target":"check.pick.success","op":"eq","value":true},
+    "then":[{"op":"set","target":"world.safe_open","value":true}],
+    "else":[{"op":"set","target":"world.alarm","value":true}]}]
+```
+
+It rolls, sums the modifiers, compares to `dc`, and exposes `check.<store>.success`
+/ `.margin` / `.total` / `.roll` / `.dc`. `dc` may be a literal *or* a `{"$path":…}`
+to an opponent's stat (an **opposed** check), and `margin` lets outcomes scale by
+how well the check went. So damage formulas, scaled costs, and skill checks stay in
+the engine — the model doesn't do the math.
 
 ---
 

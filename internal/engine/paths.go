@@ -7,12 +7,14 @@ import (
 
 // evalCtx carries per-action context for guards and effects.
 type evalCtx struct {
-	def    *Definition
-	host   *hostRef
-	params map[string]any
-	rolls  map[string]float64
-	rng    *RNG
-	record []RollResult
+	def      *Definition
+	host     *hostRef
+	params   map[string]any
+	rolls    map[string]float64
+	checks   map[string]CheckResult
+	rng      *RNG
+	record   []RollResult
+	checkLog []CheckResult
 }
 
 // hostRef binds `this.*` to the relationship or entity an attached-machine
@@ -25,7 +27,7 @@ type hostRef struct {
 }
 
 func newEvalCtx(params map[string]any, rng *RNG) *evalCtx {
-	return &evalCtx{params: params, rolls: map[string]float64{}, rng: rng}
+	return &evalCtx{params: params, rolls: map[string]float64{}, checks: map[string]CheckResult{}, rng: rng}
 }
 
 // splitPath splits a dotted path into its segments.
@@ -106,6 +108,32 @@ func resolvePath(st *State, ctx *evalCtx, path string) (any, error) {
 			return nil, fmt.Errorf("no stored roll %q", parts[1])
 		}
 		return v, nil
+	case "check":
+		// check.<store>.<field> reads a stored skill-check result from ctx.
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("bad check path %q: expected check.<store>.<field>", path)
+		}
+		if ctx == nil {
+			return nil, fmt.Errorf("check path %q not available outside an action context", path)
+		}
+		cr, ok := ctx.checks[parts[1]]
+		if !ok {
+			return nil, fmt.Errorf("no stored check %q", parts[1])
+		}
+		switch parts[2] {
+		case "success":
+			return cr.Success, nil
+		case "margin":
+			return cr.Margin, nil
+		case "total":
+			return cr.Total, nil
+		case "roll":
+			return cr.Roll, nil
+		case "dc":
+			return cr.DC, nil
+		default:
+			return nil, fmt.Errorf("unknown check field %q (want success|margin|total|roll|dc)", parts[2])
+		}
 	case "len":
 		if len(parts) < 2 {
 			return nil, fmt.Errorf("bad len path %q: missing inner path", path)

@@ -235,9 +235,13 @@ type Effect struct {
 	// machine
 	Machine string `json:"machine,omitempty"`
 	State   string `json:"state,omitempty"`
-	// roll
+	// roll / check
 	Dice  string `json:"dice,omitempty"`
 	Store string `json:"store,omitempty"`
+	// check: total = dice + Σmods, compared to DC. Mods entries and DC may be
+	// literals or {"$path":"…"}/{"$roll":"…"}.
+	Mods []any `json:"mods,omitempty"`
+	DC   any   `json:"dc,omitempty"`
 	// narrative
 	Beat string `json:"beat,omitempty"`
 	// discover

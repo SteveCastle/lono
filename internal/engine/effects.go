@@ -41,6 +41,8 @@ func applyEffect(def *Definition, st *State, ctx *evalCtx, e Effect) error {
 		return nil
 	case "roll":
 		return rollOp(ctx, e)
+	case "check":
+		return checkOp(st, ctx, e)
 	case "set_attached_state":
 		return setAttachedState(def, st, e)
 	case "mark_beat":
@@ -155,8 +157,16 @@ func moveOp(def *Definition, st *State, e Effect) error {
 	}
 	if e.Via != "" {
 		cur, _ := en.Attrs[attr].(string)
-		if findRelationship(st, e.Via, cur, e.To) == nil {
+		edge := findRelationship(st, e.Via, cur, e.To)
+		if edge == nil {
 			return fmt.Errorf("no %s from %q to %q", e.Via, cur, e.To)
+		}
+		// A reserved boolean `locked` attribute on the traversed edge blocks
+		// travel until something flips it false (e.g. via set_relationship).
+		// Absent or false means open, so games that never use `locked` are
+		// unaffected.
+		if locked, ok := edge.Attrs["locked"].(bool); ok && locked {
+			return fmt.Errorf("the %s from %q to %q is locked", e.Via, cur, e.To)
 		}
 	}
 	en.Attrs[attr] = e.To
@@ -728,6 +738,42 @@ func rollOp(ctx *evalCtx, e Effect) error {
 		ctx.rolls[e.Store] = float64(v)
 	}
 	ctx.record = append(ctx.record, RollResult{Store: e.Store, Dice: e.Dice, Result: float64(v)})
+	return nil
+}
+
+// checkOp performs a skill check: roll e.Dice, add every modifier in e.Mods, and
+// measure the total against e.DC. Mods and DC may be literals or {"$path":…} /
+// {"$roll":…}. The result is stored under check.<store> for guards/if to branch
+// on, and recorded so it surfaces in the action result.
+func checkOp(st *State, ctx *evalCtx, e Effect) error {
+	if ctx.rng == nil {
+		return fmt.Errorf("check requires an RNG")
+	}
+	if e.Store == "" {
+		return fmt.Errorf("check requires a store")
+	}
+	die, err := ctx.rng.RollDice(e.Dice)
+	if err != nil {
+		return err
+	}
+	total := float64(die)
+	for i, mv := range e.Mods {
+		f, ok := toFloat(resolveValue(st, ctx, mv))
+		if !ok {
+			return fmt.Errorf("check %q: modifier %d is not numeric (got %v)", e.Store, i, resolveValue(st, ctx, mv))
+		}
+		total += f
+	}
+	dcf, ok := toFloat(resolveValue(st, ctx, e.DC))
+	if !ok {
+		return fmt.Errorf("check %q: dc is not numeric (got %v)", e.Store, resolveValue(st, ctx, e.DC))
+	}
+	cr := CheckResult{Store: e.Store, Dice: e.Dice, Roll: float64(die), Total: total, DC: dcf, Margin: total - dcf, Success: total >= dcf}
+	if ctx.checks == nil {
+		ctx.checks = map[string]CheckResult{}
+	}
+	ctx.checks[e.Store] = cr
+	ctx.checkLog = append(ctx.checkLog, cr)
 	return nil
 }
 

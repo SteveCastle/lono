@@ -262,6 +262,7 @@ Leaf ops: `eq ne gt gte lt lte in exists contains`.
 | `len.<path>` | the length of the set/array at `<path>` (e.g. `len.entity.player.clues`) |
 | `clock` | the instance clock — an integer tick advanced by `advance` |
 | `roll.<store>` | a roll stored earlier this action (readable in guards for skill checks) |
+| `check.<store>.success` / `.margin` / `.total` / `.roll` / `.dc` | the result of a `check` op earlier this action — success (bool), margin (total−dc), total, raw die, dc |
 | `cooldown.<key>` | ticks remaining on a cooldown, `max(0, due-clock)`; `0` = ready |
 | `param.<name>` | an action parameter (inside that action only) |
 | `this.<attr>` / `this.from[.attr]` / `this.to[.attr]` / `this.id` / `this.inventory.<item>` / `this.equipped.<slot>` / `this.machine.<name>` | the host of an attached-machine transition |
@@ -290,6 +291,7 @@ Entities: `{"op":"create_entity","entityType":"character","id":"aria","attrs":{"
 Relationships: `{"op":"set_relationship","relType":"romance","from":"aria","to":"player","attrs":{"affection":0}}` · `{"op":"adjust_relationship",...,"attr":"affection","by":5}` · `{"op":"remove_relationship",...}`.
 Machines: `{"op":"set_machine_state","machine":"arc","state":"caught"}` (global) · `{"op":"set_attached_state","machine":"romance_stage","from":"aria","to":"player","state":"dating"}` (attached; use `"entity":"<id>"` for entity-attached).
 Dice: `{"op":"roll","dice":"1d6","store":"dmg"}` then reference `{"$roll":"dmg"}` in a later op (deterministic per instance seed; supports `NdM`, `NdM+K`, `NdM-K`).
+Skill check: `{"op":"check","dice":"1d20","mods":[{"$path":"entity.player.lockpicking"}],"dc":15,"store":"pick"}` — rolls + sums modifiers (each a literal or `{"$path":…}`/`{"$roll":…}`) vs `dc`, then branch on `check.pick.success`/`.margin`. `dc` may itself be `{"$path":"entity.guard.perception"}` for an **opposed** check. The skill/attribute used as a modifier is just an `int` attribute you defined on the entity type — the engine doesn't prescribe which attributes exist.
 Narrative: `{"op":"mark_beat","beat":"aria_first_smile"}` (records a one-shot beat as delivered).
 Equipment: `{"op":"equip","entity":"player","slot":"torso","item":"silk_dress"}` · `{"op":"unequip","entity":"player","slot":"torso"}` (slot must exist & accept the item's category; one item per slot).
 Movement: `{"op":"move","entity":"player","to":"hall","attr":"location","via":"exit"}` — sets a `ref` attribute (`attr` defaults to `"location"`) to the destination entity `to` (must exist). Optional `via` requires a relationship of that type from the entity's current location to `to` (errors `no exit from "study" to "garden"` if none) — first-class guarded, connected travel. Compose with `advance` (travel time) + triggers (arrival). See **Worlds & maps**.
@@ -343,7 +345,8 @@ A setting/geography is built from existing primitives — no new entity kind:
 }
 "relationshipTypes": {
   "exit": {"from":"location","to":"location","directed":true,
-           "attributes":{"direction":{"type":"string"}}}
+           "attributes":{"direction":{"type":"string"},
+                         "locked":{"type":"bool","default":false}}}
 }
 ```
 
@@ -358,6 +361,32 @@ A setting/geography is built from existing primitives — no new entity kind:
 is confined to connected, traversable links (errors `no exit from "study" to
 "garden"` if none). Compose travel **time** with `advance` (tick the clock) and
 **arrival** consequences with triggers (a `when` on the new `location`).
+
+**Locked doors.** `move … via:"exit"` honors a reserved boolean **`locked`**
+attribute on the traversed edge: if `locked` is `true`, the move is rejected
+(`the exit from "kitchen" to "cellar" is locked`). Absent or `false` means open,
+so maps that never use `locked` are unaffected. To make a door openable, flip the
+edge with `set_relationship` (e.g. as an effect on a "use key" action or on the
+travel action itself), then move:
+
+```json
+{"op":"set_relationship","relType":"exit","from":"kitchen","to":"cellar","attrs":{"locked":false}},
+{"op":"move","entity":"detective","to":"cellar","via":"exit"}
+```
+
+Don't fake a lock with *only* a separate guard while leaving the edge `locked:true`
+— `locked` is real now, so an un-flipped edge stays shut. And don't expect a
+*non-reserved* edge attribute to gate anything: `via` checks edge existence plus
+`locked`, nothing else.
+
+**Movement guards must match the graph.** Action enabledness is now
+**effect-aware**: after a transition's guard passes, the engine dry-runs its
+effects, so a `move via:"exit"` to a room with no connecting edge (or a locked one)
+is reported `enabled:false` instead of being offered and then failing. Keep each
+travel action's guard to the origin(s) that genuinely have an exit edge to the
+destination — a hand-maintained `location in [...]` list that includes
+unconnected rooms is a bug the engine will now surface. The import validator also
+flags a `move` whose `to` names no defined entity, or whose `attr` is not a `ref`.
 
 **Per-instance descriptions.** Any specific entity — a room, object, or person in
 the cast — can carry its own authored prose:
@@ -489,20 +518,41 @@ consequential moments so any session — including a resumed one — can recall 
 story. Recent entries show up in `state` output; the full journal is read with
 `inspect <run> log`.
 
-## Skill checks (roll → if → compute)
+## Attributes, skills & checks
 
-A single action can express a dice check by storing a roll and branching on the
-`roll.<store>` path:
+**Attributes and skills are whatever the designer declares** — they're just typed
+`int` (or `float`) attributes on an entity type. The engine prescribes none; add
+`strength`, `lockpicking`, `charm`, `perception`, … as you see fit, with bounds:
 
 ```json
-[{"op":"roll","dice":"1d20","store":"atk"},
- {"op":"if","when":{"target":"roll.atk","op":"gte","value":12},
-    "then":[{"op":"compute","target":"entity.goblin.health","fn":"sub",
-             "a":{"$path":"entity.goblin.health"},"b":{"$roll":"atk"}}],
-    "else":[{"op":"mark_beat","beat":"you_miss"}]}]
+"character": {"attributes": {
+  "lockpicking": {"type":"int","min":0,"max":20},
+  "charm":       {"type":"int","default":2}
+}}
 ```
-Put quantitative outcomes (damage, scaled costs, checks) in `compute`/`if`/`$path`/
-`roll.<store>` so the engine does the math — never ask the model to compute it.
+
+**The `check` op turns those attributes into modifiers against a dice roll** — the
+preferred way to author a skill check:
+
+```json
+[{"op":"check","dice":"1d20","mods":[{"$path":"entity.player.lockpicking"}],"dc":15,"store":"pick"},
+ {"op":"if","when":{"target":"check.pick.success","op":"eq","value":true},
+    "then":[{"op":"set","target":"world.safe_open","value":true},
+            {"op":"record","text":"The tumblers fall into place."}],
+    "else":[{"op":"set","target":"world.alarm","value":true}]}]
+```
+
+It rolls, adds every modifier, compares the total to `dc`, and exposes
+`check.<store>.success` / `.margin` / `.total` / `.roll` / `.dc`. `dc` can be a
+literal **or** `{"$path":"entity.guard.perception"}` for an **opposed** check, and
+`margin` lets you scale outcomes by *how well* the check went. The result also
+surfaces in the action output (`checks`) so the narrator can describe the roll.
+
+You can still hand-build a check with `roll` → `if` → `compute` (reading
+`roll.<store>`) when you need full control — but `check` removes the scratch var
+and gives you success/margin for free. Either way, put quantitative outcomes in
+`check`/`compute`/`if`/`$path` so the engine does the math — never ask the model to
+compute it.
 
 ## Setup (seed the starting state)
 
