@@ -39,6 +39,26 @@ lono -d ./.lono advance run1 1                        # pass a tick (fires sched
 `running-a-game` skill (or `plugin/lono/skills/running-a-game/reference.md`) for
 the full command and output reference.
 
+## Open them in the visual editor
+
+```bash
+lono edit --dir examples        # lono studio, editing these files
+```
+
+Four of the five games carry a hand-laid **map** (`_editor.map`) so the *Map*
+section opens with rooms already arranged on the grid and the cast placed in them:
+
+| Game | Map | Scenes (tabs that restage the cast by story state) |
+|------|-----|----------------------------------------------------|
+| quickstart | study → hall → garden | — |
+| hollow-manor | the manor's six rooms | *The Reckoning* — gathers everyone in the foyer when `arc` reaches `solved` |
+| vault-heist | Fenwick St → lobby → corridor → vault | the player walks the building as the heist advances (lobby / corridor / vault) |
+| gallery-romance | bar · gallery floor · terrace · private room | *mingling*, *on the floor*, *alone together* — guests move as the evening turns |
+| last-watch | *(none — a single besieged outpost; it showcases time & reactive systems, not space)* | — |
+
+Each scene compiles to a `scene_…` trigger, so the repositioning (and any journal
+line) actually fires at play time too, not just in the editor.
+
 ---
 
 ## The games
@@ -71,7 +91,9 @@ A soirée with three potential partners. Shows the **social graph in depth**: a
 flirting → smitten`) whose transitions are guarded on `this.affection` /
 `this.trust` and on an equipped outfit; **derived** queries (`admirer_count`,
 `top_admirer` via `argmax`, `tension_sources` via `list`); guarded **beats**; and
-three **endings** gated on the relationship state.
+three **endings** gated on the relationship state. It also carries a gallery **map**
+with three **scenes** — open it in `lono edit` and switch scene tabs to watch the
+guests move from the bar onto the floor and into the private room.
 
 ```bash
 lono -d ./.lono game import --spec-file examples/gallery-romance.lono.json
@@ -89,6 +111,8 @@ single-use security card), **equipment** that gates or eases actions (a disguise
 to enter, a crowbar to force the safe), and a **dice skill-check**: `crack_safe`
 rolls `1d20`, and on success a `compute` adds the loot while on failure it trips
 `world.alarm`. Guards gate every step; three **endings** branch on loot + alarm.
+It now also has an **exit graph + map**: open it in `lono edit` to watch the thief
+move from the street through the lobby and corridor into the vault as the arc runs.
 
 ```bash
 lono -d ./.lono game import --spec-file examples/vault-heist.lono.json
